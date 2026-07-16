@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APU - Control de Precio Unitario</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --border:#dcdfe4; --text:#1f2430; --muted:#6b7280;
+    --primary:#1e6b52; --primary-dark:#154f3d; --danger:#b3423e; --accent:#eef7f3;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); font-size:14px;}
+  h1,h2,h3{margin:0 0 8px 0;}
+  button{font-family:inherit; cursor:pointer; border:none; border-radius:6px; padding:7px 14px; font-size:13px; background:#e8e9ec; color:var(--text); transition:background .15s;}
+  button:hover{background:#dcdde1;}
+  .btn-primary{background:var(--primary); color:#fff;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-danger{background:#fbe9e8; color:var(--danger);}
+  .btn-danger:hover{background:#f6d3d1;}
+  .btn-sm{padding:4px 9px; font-size:12px;}
+  .btn-outline{background:transparent; border:1px solid rgba(255,255,255,.6); color:#fff;}
+  .btn-outline:hover{background:rgba(255,255,255,.15);}
+  input, select{font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--border); border-radius:5px; width:100%; background:#fff; color:var(--text);}
+  .container{max-width:1200px; margin:0 auto; padding:20px;}
+  .topbar{position:sticky; top:0; z-index:20; background:var(--primary-dark); color:#fff; box-shadow:var(--shadow);}
+  .topbar-inner{max-width:1200px; margin:0 auto; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  .topbar-title{display:flex; flex-direction:column; gap:2px;}
+  .topbar-title .obra-nombre{font-size:17px; font-weight:700;}
+  .topbar-title .obra-meta{font-size:12px; opacity:.8;}
+  .topbar-price{text-align:right;}
+  .topbar-price .label{font-size:11px; opacity:.85; text-transform:uppercase; letter-spacing:.04em;}
+  .topbar-price .value{font-size:22px; font-weight:800;}
+  .topbar-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; box-shadow:var(--shadow);}
+  .obras-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; margin-top:16px;}
+  .obra-card{display:flex; flex-direction:column; gap:6px;}
+  .obra-card .nombre{font-size:16px; font-weight:700;}
+  .obra-card .meta{color:var(--muted); font-size:12.5px;}
+  .obra-card .pv{margin-top:6px; font-size:18px; font-weight:800; color:var(--primary-dark);}
+  .obra-card .acciones{margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;}
+  .page-header{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  .form-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin:12px 0;}
+  .form-field label{display:block; font-size:11.5px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.03em;}
+  .form-actions{display:flex; gap:8px; margin-top:4px;}
+  .tabs{display:flex; gap:4px; flex-wrap:wrap; border-bottom:2px solid var(--border); margin:16px 0 0 0;}
+  .tab-btn{background:transparent; border-radius:6px 6px 0 0; padding:9px 16px; color:var(--muted); font-weight:600;}
+  .tab-btn.active{background:var(--panel); color:var(--primary-dark); border:2px solid var(--border); border-bottom:2px solid var(--panel); margin-bottom:-2px;}
+  .subtabs{display:flex; gap:6px; flex-wrap:wrap; margin:16px 0 10px 0;}
+  .subtab-btn{background:var(--accent); color:var(--primary-dark); font-weight:600; border-radius:20px; padding:6px 14px;}
+  .subtab-btn.active{background:var(--primary); color:#fff;}
+  .rama-panel{background:var(--panel); border:2px solid var(--border); border-top:none; border-radius:0 0 10px 10px; padding:18px;}
+  .table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:8px;}
+  table.data-table{width:100%; border-collapse:collapse; min-width:640px; background:#fff;}
+  table.data-table th{background:#f0f1f3; text-align:left; padding:8px 10px; font-size:12px; text-transform:uppercase; letter-spacing:.02em; color:var(--muted); border-bottom:1px solid var(--border); white-space:nowrap;}
+  table.data-table td{padding:6px 10px; border-bottom:1px solid #eef0f2; vertical-align:middle;}
+  table.data-table tr.new-row td{background:#fafcfb;}
+  table.data-table tfoot td{font-weight:700; background:#f7f8f9; padding:9px 10px;}
+  td.actions{white-space:nowrap;}
+  .resumen{margin-top:18px; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;}
+  .resumen .item{background:#fafbfc; border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .resumen .item .lbl{font-size:11px; text-transform:uppercase; color:var(--muted); letter-spacing:.03em;}
+  .resumen .item .val{font-size:16px; font-weight:700; margin-top:2px;}
+  .resumen .item.total .val{color:var(--primary-dark);}
+  .resumen .item.venta{background:var(--primary); color:#fff;}
+  .resumen .item.venta .lbl{color:#e3f0ea;}
+  .resumen .item.venta .val{color:#fff; font-size:20px;}
+  .resumen .item.utilidad input{margin-top:4px;}
+  .empty{color:var(--muted); font-style:italic; padding:14px;}
+  .link-btn{background:none; border:none; color:inherit; text-decoration:underline; padding:0; font-size:12px; opacity:.9;}
+  .back-row{margin-bottom:6px;}
+  #printArea{display:none;}
+  .modal-overlay{position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:100; padding:16px;}
+  .modal-box{background:var(--panel); border-radius:10px; padding:20px; max-width:420px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,.25);}
+  .modal-box h3{margin-bottom:4px;}
+  .modal-box .modal-hint{color:var(--muted); font-size:12.5px; margin-bottom:12px;}
+  .modal-check-list{display:flex; flex-direction:column; gap:8px; margin-bottom:14px;}
+  .modal-check-list label{display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer;}
+  .modal-check-list input[type="checkbox"]{width:auto;}
+  .modal-selectall{font-size:12px; margin-bottom:10px;}
+  @media print{
+    body *{ visibility:hidden; }
+    #printArea, #printArea *{ visibility:visible; }
+    #printArea{ display:block; position:absolute; left:0; top:0; width:100%; padding:20px; }
+    #printArea table{width:100%; border-collapse:collapse; margin-bottom:6px;}
+    #printArea th, #printArea td{border:1px solid #999; padding:4px 6px; font-size:11px;}
+    #printArea h2{margin-top:22px; border-bottom:2px solid #333; padding-bottom:4px;}
+    #printArea h3{margin-top:12px; margin-bottom:4px;}
+    #printArea .grand{font-size:15px; font-weight:800; margin-top:10px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="printArea"></div>
+
+<script>
+const STORAGE_KEY = 'apu_obras_v1';
+
+const RAMAS = [
+  {key:'impermeabilizacion', label:'Impermeabilización'},
+  {key:'pintura', label:'Pintura'},
+  {key:'construccion', label:'Construcción'},
+  {key:'remodelacion', label:'Remodelación'}
+];
+
+const APARTADOS = [
+  {key:'materiales', label:'Materiales'},
+  {key:'manoObra', label:'Mano de Obra'},
+  {key:'equipo', label:'Equipo / Maquinaria'},
+  {key:'indirectos', label:'Costos Indirectos'}
+];
+
+const FIELDS = {
+  materiales: [
+    {key:'nombre', label:'Material', type:'text'},
+    {key:'ubicacion', label:'Proveedor', type:'text'},
+    {key:'unidad', label:'Unidad', type:'text'},
+    {key:'cantidad', label:'Cantidad', type:'number'},
+    {key:'precioUnitario', label:'Precio Unitario', type:'number'}
+  ],
+  manoObra: [
+    {key:'descripcion', label:'Descripción', type:'text'},
+    {key:'unidad', label:'Unidad', type:'text'},
+    {key:'cantidad', label:'Cantidad', type:'number'},
+    {key:'rendimiento', label:'Rendimiento (por jornada)', type:'number'},
+    {key:'precioUnitario', label:'Precio Unitario', type:'number'}
+  ],
+  equipo: [
+    {key:'nombre', label:'Equipo/Maquinaria', type:'text'},
+    {key:'unidad', label:'Unidad', type:'text'},
+    {key:'cantidad', label:'Cantidad', type:'number'},
+    {key:'rendimiento', label:'Rendimiento (por jornada)', type:'number'},
+    {key:'precioUnitario', label:'Precio Unitario', type:'number'}
+  ],
+  indirectos: [
+    {key:'concepto', label:'Concepto', type:'text'},
+    {key:'tipo', label:'Tipo', type:'select', options:[['fijo','Monto fijo'],['porcentaje','% s/ costo directo']]},
+    {key:'valor', label:'Valor', type:'number'}
+  ]
+};
+
+// ---------- helpers ----------
+function uid(){ return 'id_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
+function escapeHtml(str){
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function money(n){
+  return '$'+(Number(n)||0).toLocaleString('es-MX',{minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function num(n, d=2){ return (Number(n)||0).toLocaleString('es-MX',{maximumFractionDigits:d}); }
+function nowISO(){ return new Date().toISOString(); }
+function fmtFecha(dateStr){
+  if(!dateStr) return '—';
+  const [y,m,d] = dateStr.split('-');
+  if(!y || !m || !d) return dateStr;
+  return `${d}/${m}/${y}`;
+}
+function fmtFechaHora(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
+}
+
+// ---------- data model ----------
+function nuevaRamaData(){ return {materiales:[], manoObra:[], equipo:[], indirectos:[], utilidadPct:0}; }
+function nuevaObra(nombre, lugar, cliente){
+  const ramas = {};
+  RAMAS.forEach(r=> ramas[r.key] = nuevaRamaData());
+  return {id:uid(), nombre, lugar, cliente, ramas, directores:[], fechaInicio:'', fechaFinEstimada:'', indefinido:false};
+}
+function normalizeObra(o){
+  o.ramas = o.ramas || {};
+  RAMAS.forEach(r=>{
+    o.ramas[r.key] = o.ramas[r.key] || nuevaRamaData();
+    const ra = o.ramas[r.key];
+    ra.materiales = ra.materiales || [];
+    ra.manoObra = ra.manoObra || [];
+    ra.equipo = ra.equipo || [];
+    ra.indirectos = ra.indirectos || [];
+    ra.utilidadPct = ra.utilidadPct || 0;
+  });
+  o.directores = o.directores || [];
+  o.fechaInicio = o.fechaInicio || '';
+  o.fechaFinEstimada = o.fechaFinEstimada || '';
+  o.indefinido = !!o.indefinido;
+  return o;
+}
+function loadObras(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    return raw.map(normalizeObra);
+  }catch(e){ return []; }
+}
+function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state.obras)); }
+
+// ---------- computations ----------
+function calcRowTotal(tipo, item){
+  if(tipo === 'manoObra' || tipo === 'equipo'){
+    const rendimiento = Number(item.rendimiento) || 1;
+    return (Number(item.cantidad)||0) / rendimiento * (Number(item.precioUnitario)||0);
+  }
+  return (Number(item.cantidad)||0) * (Number(item.precioUnitario)||0);
+}
+function subtotal(tipo, items){ return items.reduce((s,i)=> s + calcRowTotal(tipo, i), 0); }
+function costoDirecto(rama){ return subtotal('materiales', rama.materiales) + subtotal('manoObra', rama.manoObra) + subtotal('equipo', rama.equipo); }
+function totalIndirecto(item, cd){ return item.tipo === 'porcentaje' ? cd * (Number(item.valor)||0) / 100 : (Number(item.valor)||0); }
+function costoIndirectoTotal(rama){ const cd = costoDirecto(rama); return rama.indirectos.reduce((s,i)=> s + totalIndirecto(i, cd), 0); }
+function costoTotalRama(rama){ return costoDirecto(rama) + costoIndirectoTotal(rama); }
+function precioVentaRama(rama){ return costoTotalRama(rama) * (1 + (Number(rama.utilidadPct)||0)/100); }
+function obraTotals(obra, ramaKeys){
+  let cd=0, ci=0, ct=0, pv=0;
+  (ramaKeys || RAMAS.map(r=>r.key)).forEach(key=>{
+    const ra = obra.ramas[key];
+    cd += costoDirecto(ra); ci += costoIndirectoTotal(ra); ct += costoTotalRama(ra); pv += precioVentaRama(ra);
+  });
+  return {cd, ci, ct, pv};
+}
+
+// ---------- state ----------
+let state = {
+  obras: loadObras(),
+  view: 'list',
+  currentObraId: null,
+  currentRama: 'impermeabilizacion',
+  currentApartado: 'materiales',
+  editing: {tipo:null, id:null},
+  nuevaObraFormOpen: false,
+  editingObraId: null,
+  obraSearchQuery: '',
+  pdfModalOpen: false,
+  pdfSelectedRamas: RAMAS.map(r=>r.key)
+};
+
+function getObra(id){ return state.obras.find(o=>o.id===id); }
+function getCurrentObra(){ return getObra(state.currentObraId); }
+function getCurrentRama(){ return getCurrentObra().ramas[state.currentRama]; }
+
+// ---------- list view actions ----------
+function toggleNuevaObraForm(){ state.nuevaObraFormOpen = !state.nuevaObraFormOpen; render(); }
+function filtrarObras(value){
+  state.obraSearchQuery = value;
+  render();
+  const el = document.getElementById('obraSearchInput');
+  if(el){ el.focus(); const v = el.value; el.setSelectionRange(v.length, v.length); }
+}
+function crearObra(){
+  const nombre = document.getElementById('new_obra_nombre').value.trim();
+  const lugar = document.getElementById('new_obra_lugar').value.trim();
+  const cliente = document.getElementById('new_obra_cliente').value.trim();
+  if(!nombre){ alert('El nombre de la obra es obligatorio.'); return; }
+  const indefinido = document.getElementById('new_obra_indefinido').checked;
+  const obra = nuevaObra(nombre, lugar, cliente);
+  obra.fechaInicio = document.getElementById('new_obra_fechaInicio').value;
+  obra.indefinido = indefinido;
+  obra.fechaFinEstimada = indefinido ? '' : document.getElementById('new_obra_fechaFin').value;
+  state.obras.push(obra);
+  state.nuevaObraFormOpen = false;
+  persist(); render();
+}
+function agregarDirector(obraId){
+  const obra = getObra(obraId);
+  const el = document.getElementById(`new_director_${obraId}`);
+  const nombre = el.value.trim();
+  if(!nombre) return;
+  obra.directores.push({id: uid(), nombre, creadoEn: nowISO()});
+  persist(); render();
+  const focusEl = document.getElementById(`new_director_${obraId}`);
+  if(focusEl) focusEl.focus();
+}
+function eliminarDirector(obraId, dirId){
+  const obra = getObra(obraId);
+  obra.directores = obra.directores.filter(d=>d.id!==dirId);
+  persist(); render();
+}
+function iniciarEdicionObra(id){ state.editingObraId = id; render(); }
+function cancelarEdicionObra(){ state.editingObraId = null; render(); }
+function guardarObra(id){
+  const obra = getObra(id);
+  const nombre = document.getElementById(`edit_obra_${id}_nombre`).value.trim();
+  obra.nombre = nombre || obra.nombre;
+  obra.lugar = document.getElementById(`edit_obra_${id}_lugar`).value.trim();
+  obra.cliente = document.getElementById(`edit_obra_${id}_cliente`).value.trim();
+  obra.fechaInicio = document.getElementById(`edit_obra_${id}_fechaInicio`).value;
+  obra.indefinido = document.getElementById(`edit_obra_${id}_indefinido`).checked;
+  obra.fechaFinEstimada = obra.indefinido ? '' : document.getElementById(`edit_obra_${id}_fechaFin`).value;
+  state.editingObraId = null;
+  persist(); render();
+}
+function eliminarObra(id){
+  if(!confirm('¿Eliminar esta obra y todo su contenido? Esta acción no se puede deshacer.')) return;
+  state.obras = state.obras.filter(o=>o.id!==id);
+  persist(); render();
+}
+function abrirObra(id){
+  state.view='obra'; state.currentObraId=id; state.currentRama='impermeabilizacion';
+  state.currentApartado='materiales'; state.editing={tipo:null,id:null};
+  render();
+}
+function editarObraDesdeDetalle(id){ state.view='list'; state.editingObraId=id; render(); }
+function volverLista(){ state.view='list'; state.currentObraId=null; render(); }
+
+// ---------- pantalla completa ----------
+function toggleFullScreen(){
+  if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{}); }
+  else { document.exitFullscreen().catch(()=>{}); }
+}
+document.addEventListener('fullscreenchange', ()=> render());
+
+// ---------- obra view actions ----------
+function cambiarRama(key){ state.currentRama=key; state.currentApartado='materiales'; state.editing={tipo:null,id:null}; render(); }
+function cambiarApartado(key){ state.currentApartado=key; state.editing={tipo:null,id:null}; render(); }
+function cambiarUtilidad(value){ getCurrentRama().utilidadPct = Number(value)||0; persist(); render(); }
+
+function iniciarEdicion(tipo,id){ state.editing={tipo,id}; render(); }
+function cancelarEdicion(){ state.editing={tipo:null,id:null}; render(); }
+function guardarEdicion(tipo,id){
+  const rama = getCurrentRama();
+  const item = rama[tipo].find(i=>i.id===id);
+  FIELDS[tipo].forEach(f=>{
+    const el = document.getElementById(`edit_${tipo}_${id}_${f.key}`);
+    item[f.key] = f.type==='number' ? (Number(el.value)||0) : el.value;
+  });
+  state.editing={tipo:null,id:null};
+  persist(); render();
+}
+function eliminarItem(tipo,id){
+  if(!confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+  const rama = getCurrentRama();
+  rama[tipo] = rama[tipo].filter(i=>i.id!==id);
+  persist(); render();
+}
+function agregarItem(tipo){
+  const rama = getCurrentRama();
+  const item = {id: uid(), creadoEn: nowISO()};
+  let hasValue = false;
+  FIELDS[tipo].forEach(f=>{
+    const el = document.getElementById(`new_${tipo}_${f.key}`);
+    let v = f.type==='number' ? (Number(el.value)||0) : el.value.trim();
+    if(f.type==='select' && !v) v = f.options[0][0];
+    item[f.key] = v;
+    if(f.type==='text' && v) hasValue = true;
+    if(f.type==='number' && v) hasValue = true;
+  });
+  if(!hasValue){ return; }
+  rama[tipo].push(item);
+  persist(); render();
+}
+
+// ---------- rendering ----------
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = state.view === 'list' ? renderListView() : renderObraView();
+}
+
+function fullScreenBtnHtml(outline){
+  const isFs = !!document.fullscreenElement;
+  const label = isFs ? '⛶ Salir de Pantalla Completa' : '⛶ Pantalla Completa';
+  return `<button class="${outline?'btn-outline':''}" onclick="toggleFullScreen()">${label}</button>`;
+}
+
+function renderListView(){
+  let html = '<div class="container">';
+  html += `<div class="page-header"><h1>Mis Obras</h1>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      ${fullScreenBtnHtml(false)}
+      <button class="btn-primary" onclick="toggleNuevaObraForm()">${state.nuevaObraFormOpen ? 'Cancelar' : '+ Nueva Obra'}</button>
+    </div></div>`;
+
+  if(state.nuevaObraFormOpen){
+    html += `<div class="card" style="margin-top:14px;">
+      <h3>Nueva Obra</h3>
+      <div class="form-grid">
+        <div class="form-field"><label>Nombre de la obra</label><input id="new_obra_nombre" type="text" placeholder="Ej. Casa Pérez" onkeydown="if(event.key==='Enter') crearObra()"></div>
+        <div class="form-field"><label>Lugar</label><input id="new_obra_lugar" type="text" placeholder="Ubicación" onkeydown="if(event.key==='Enter') crearObra()"></div>
+        <div class="form-field"><label>Cliente</label><input id="new_obra_cliente" type="text" placeholder="Nombre del cliente" onkeydown="if(event.key==='Enter') crearObra()"></div>
+        <div class="form-field"><label>Fecha de inicio</label><input id="new_obra_fechaInicio" type="date"></div>
+        <div class="form-field"><label>Fecha estimada de término</label><input id="new_obra_fechaFin" type="date"></div>
+        <div class="form-field" style="align-self:end;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; font-size:13px; color:var(--text);">
+            <input type="checkbox" id="new_obra_indefinido" style="width:auto;" onchange="document.getElementById('new_obra_fechaFin').disabled=this.checked;">
+            Sin fecha de término definida (indefinido)
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" onclick="crearObra()">Guardar Obra</button>
+        <button onclick="toggleNuevaObraForm()">Cancelar</button>
+      </div>
+    </div>`;
+  }
+
+  if(state.obras.length === 0 && !state.nuevaObraFormOpen){
+    html += `<p class="empty">Aún no hay obras registradas. Crea la primera con "+ Nueva Obra".</p>`;
+  }
+
+  if(state.obras.length > 0){
+    html += `<div class="form-field" style="margin-top:14px; max-width:320px;">
+      <label>Buscar obra</label>
+      <input id="obraSearchInput" type="text" placeholder="Buscar por nombre o cliente..." value="${escapeHtml(state.obraSearchQuery)}" oninput="filtrarObras(this.value)">
+    </div>`;
+  }
+
+  const query = (state.obraSearchQuery || '').trim().toLowerCase();
+  const obrasFiltradas = query
+    ? state.obras.filter(o => (o.nombre||'').toLowerCase().includes(query) || (o.cliente||'').toLowerCase().includes(query))
+    : state.obras;
+
+  if(query && obrasFiltradas.length === 0){
+    html += `<p class="empty">No se encontraron obras con ese nombre.</p>`;
+  }
+
+  html += '<div class="obras-grid">';
+  obrasFiltradas.forEach(obra=>{
+    if(state.editingObraId === obra.id){
+      html += `<div class="card obra-card">
+        <div class="form-field"><label>Nombre</label><input id="edit_obra_${obra.id}_nombre" type="text" value="${escapeHtml(obra.nombre)}"></div>
+        <div class="form-field"><label>Lugar</label><input id="edit_obra_${obra.id}_lugar" type="text" value="${escapeHtml(obra.lugar)}"></div>
+        <div class="form-field"><label>Cliente</label><input id="edit_obra_${obra.id}_cliente" type="text" value="${escapeHtml(obra.cliente)}"></div>
+        <div class="form-field"><label>Fecha de inicio</label><input id="edit_obra_${obra.id}_fechaInicio" type="date" value="${escapeHtml(obra.fechaInicio)}"></div>
+        <div class="form-field"><label>Fecha estimada de término</label><input id="edit_obra_${obra.id}_fechaFin" type="date" value="${escapeHtml(obra.fechaFinEstimada)}" ${obra.indefinido?'disabled':''}></div>
+        <div class="form-field">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; font-size:13px; color:var(--text);">
+            <input type="checkbox" id="edit_obra_${obra.id}_indefinido" style="width:auto;" ${obra.indefinido?'checked':''} onchange="document.getElementById('edit_obra_${obra.id}_fechaFin').disabled=this.checked;">
+            Sin fecha de término definida (indefinido)
+          </label>
+        </div>
+        <div class="form-field">
+          <label>Director(es) de Obra</label>
+          <div style="display:flex; gap:6px;">
+            <input id="new_director_${obra.id}" type="text" placeholder="Nombre del director" onkeydown="if(event.key==='Enter'){ event.preventDefault(); agregarDirector('${obra.id}'); }">
+            <button class="btn-sm btn-primary" type="button" onclick="agregarDirector('${obra.id}')">Agregar</button>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+            ${obra.directores.length ? obra.directores.map(d=>`<span style="background:var(--accent); color:var(--primary-dark); border-radius:14px; padding:4px 10px 4px 12px; font-size:12.5px; display:inline-flex; align-items:center; gap:6px;">${escapeHtml(d.nombre)} <button class="link-btn" style="opacity:.75;" title="Quitar director" onclick="eliminarDirector('${obra.id}','${d.id}')">✕</button></span>`).join('') : '<span class="meta" style="font-style:italic;">Sin directores asignados</span>'}
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary btn-sm" onclick="guardarObra('${obra.id}')">Guardar</button>
+          <button class="btn-sm" onclick="cancelarEdicionObra()">Cancelar</button>
+        </div>
+      </div>`;
+    } else {
+      const tot = obraTotals(obra);
+      html += `<div class="card obra-card">
+        <div class="nombre">${escapeHtml(obra.nombre)}</div>
+        <div class="meta">📍 ${escapeHtml(obra.lugar) || '—'}</div>
+        <div class="meta">👤 ${escapeHtml(obra.cliente) || '—'}</div>
+        <div class="meta">🧑‍💼 ${obra.directores.length ? escapeHtml(obra.directores.map(d=>d.nombre).join(', ')) : '—'}</div>
+        <div class="meta">🗓️ ${fmtFecha(obra.fechaInicio)} – ${obra.indefinido ? 'Indefinido' : fmtFecha(obra.fechaFinEstimada)}</div>
+        <div class="pv">${money(tot.pv)}</div>
+        <div class="meta">Precio de venta total</div>
+        <div class="acciones">
+          <button class="btn-primary btn-sm" onclick="abrirObra('${obra.id}')">Abrir</button>
+          <button class="btn-sm" onclick="iniciarEdicionObra('${obra.id}')">Editar</button>
+          <button class="btn-danger btn-sm" onclick="eliminarObra('${obra.id}')">Eliminar</button>
+        </div>
+      </div>`;
+    }
+  });
+  html += '</div></div>';
+  return html;
+}
+
+function renderObraView(){
+  const obra = getCurrentObra();
+  const rama = obra.ramas[state.currentRama];
+  const tot = obraTotals(obra);
+
+  let html = `<div class="topbar"><div class="topbar-inner">
+    <div class="topbar-title">
+      <div class="obra-nombre">${escapeHtml(obra.nombre)} <button class="link-btn" onclick="editarObraDesdeDetalle('${obra.id}')">✎ editar</button></div>
+      <div class="obra-meta">📍 ${escapeHtml(obra.lugar)||'—'} &nbsp;·&nbsp; 👤 ${escapeHtml(obra.cliente)||'—'}</div>
+      <div class="obra-meta">🧑‍💼 ${obra.directores.length ? escapeHtml(obra.directores.map(d=>d.nombre).join(', ')) : 'Sin director asignado'} &nbsp;·&nbsp; 🗓️ ${fmtFecha(obra.fechaInicio)} – ${obra.indefinido ? 'Indefinido' : fmtFecha(obra.fechaFinEstimada)}</div>
+    </div>
+    <div class="topbar-price">
+      <div class="label">Precio de Venta Total de la Obra</div>
+      <div class="value">${money(tot.pv)}</div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn-outline" onclick="volverLista()">&larr; Volver a Obras</button>
+      ${fullScreenBtnHtml(true)}
+      <button class="btn-outline" onclick="exportarCSV()">Exportar CSV</button>
+      <button class="btn-outline" onclick="abrirModalPDF()">Exportar PDF</button>
+    </div>
+  </div></div>`;
+
+  if(state.pdfModalOpen) html += renderModalPDF();
+
+  html += '<div class="container">';
+
+  // rama tabs
+  html += '<div class="tabs">';
+  RAMAS.forEach(r=>{
+    const active = r.key === state.currentRama ? 'active' : '';
+    html += `<button class="tab-btn ${active}" onclick="cambiarRama('${r.key}')">${r.label}</button>`;
+  });
+  html += '</div>';
+
+  html += '<div class="rama-panel">';
+
+  // apartado subtabs
+  html += '<div class="subtabs">';
+  APARTADOS.forEach(a=>{
+    const active = a.key === state.currentApartado ? 'active' : '';
+    html += `<button class="subtab-btn ${active}" onclick="cambiarApartado('${a.key}')">${a.label}</button>`;
+  });
+  html += '</div>';
+
+  html += `<div class="table-wrap">${renderItemsTable(state.currentApartado, rama)}</div>`;
+
+  // resumen
+  const sm = subtotal('materiales', rama.materiales), smo = subtotal('manoObra', rama.manoObra), se = subtotal('equipo', rama.equipo);
+  const cd = sm+smo+se, ci = costoIndirectoTotal(rama), ct = cd+ci, pv = precioVentaRama(rama);
+  html += `<div class="resumen">
+    <div class="item"><div class="lbl">Subtotal Materiales</div><div class="val">${money(sm)}</div></div>
+    <div class="item"><div class="lbl">Subtotal Mano de Obra</div><div class="val">${money(smo)}</div></div>
+    <div class="item"><div class="lbl">Subtotal Equipo</div><div class="val">${money(se)}</div></div>
+    <div class="item total"><div class="lbl">Costo Directo</div><div class="val">${money(cd)}</div></div>
+    <div class="item"><div class="lbl">Costo Indirecto</div><div class="val">${money(ci)}</div></div>
+    <div class="item total"><div class="lbl">Costo Total</div><div class="val">${money(ct)}</div></div>
+    <div class="item utilidad"><div class="lbl">Utilidad (%)</div>
+      <input type="number" step="any" value="${escapeHtml(rama.utilidadPct)}" onchange="cambiarUtilidad(this.value)">
+    </div>
+    <div class="item venta"><div class="lbl">Precio de Venta (rama)</div><div class="val">${money(pv)}</div></div>
+  </div>`;
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderItemsTable(tipo, rama){
+  const cfg = FIELDS[tipo];
+  const items = rama[tipo];
+  const cd = costoDirecto(rama);
+  const editing = state.editing;
+  const subtotalVal = tipo === 'indirectos' ? items.reduce((s,i)=> s + totalIndirecto(i, cd), 0) : subtotal(tipo, items);
+
+  let html = '<table class="data-table"><thead><tr>';
+  cfg.forEach(f=> html += `<th>${f.label}</th>`);
+  html += '<th>Total</th><th>Agregado</th><th>Acciones</th></tr></thead><tbody>';
+
+  if(items.length === 0){
+    html += `<tr><td colspan="${cfg.length+3}" class="empty">Sin registros todavía. Agrega el primero abajo.</td></tr>`;
+  }
+
+  items.forEach(item=>{
+    const isEditing = editing.tipo===tipo && editing.id===item.id;
+    const rowTotal = tipo === 'indirectos' ? totalIndirecto(item, cd) : calcRowTotal(tipo, item);
+    html += '<tr>';
+    cfg.forEach(f=>{
+      if(isEditing){
+        if(f.type === 'select'){
+          html += `<td><select id="edit_${tipo}_${item.id}_${f.key}">`;
+          f.options.forEach(([val,label])=>{
+            html += `<option value="${val}" ${item[f.key]===val?'selected':''}>${label}</option>`;
+          });
+          html += '</select></td>';
+        } else {
+          html += `<td><input id="edit_${tipo}_${item.id}_${f.key}" type="${f.type}" ${f.type==='number'?'step="any"':''} value="${escapeHtml(item[f.key])}" onkeydown="if(event.key==='Enter') guardarEdicion('${tipo}','${item.id}')"></td>`;
+        }
+      } else {
+        let display;
+        if(f.type === 'select'){
+          const found = f.options.find(o=>o[0]===item[f.key]);
+          display = found ? found[1] : escapeHtml(item[f.key]);
+        } else if(f.type === 'number'){
+          display = num(item[f.key]);
+        } else {
+          display = escapeHtml(item[f.key]);
+        }
+        html += `<td>${display}</td>`;
+      }
+    });
+    html += `<td>${money(rowTotal)}</td>`;
+    html += `<td>${fmtFechaHora(item.creadoEn)}</td>`;
+    if(isEditing){
+      html += `<td class="actions"><button class="btn-sm btn-primary" onclick="guardarEdicion('${tipo}','${item.id}')">Guardar</button> <button class="btn-sm" onclick="cancelarEdicion()">Cancelar</button></td>`;
+    } else {
+      html += `<td class="actions"><button class="btn-sm" onclick="iniciarEdicion('${tipo}','${item.id}')">Editar</button> <button class="btn-sm btn-danger" onclick="eliminarItem('${tipo}','${item.id}')">Eliminar</button></td>`;
+    }
+    html += '</tr>';
+  });
+
+  // new row
+  html += '<tr class="new-row">';
+  cfg.forEach(f=>{
+    if(f.type === 'select'){
+      html += `<td><select id="new_${tipo}_${f.key}">`;
+      f.options.forEach(([val,label])=> html += `<option value="${val}">${label}</option>`);
+      html += '</select></td>';
+    } else {
+      html += `<td><input id="new_${tipo}_${f.key}" type="${f.type}" ${f.type==='number'?'step="any"':''} placeholder="${f.label}" onkeydown="if(event.key==='Enter') agregarItem('${tipo}')"></td>`;
+    }
+  });
+  html += `<td>—</td><td>—</td><td class="actions"><button class="btn-sm btn-primary" onclick="agregarItem('${tipo}')">Agregar</button></td>`;
+  html += '</tr>';
+
+  html += `</tbody><tfoot><tr><td colspan="${cfg.length}">Subtotal</td><td colspan="3">${money(subtotalVal)}</td></tr></tfoot></table>`;
+  return html;
+}
+
+// ---------- export CSV ----------
+function csvEscape(v){
+  v = String(v ?? '');
+  if(/[",\n]/.test(v)){ v = '"' + v.replace(/"/g,'""') + '"'; }
+  return v;
+}
+function downloadFile(filename, content, mime){
+  const blob = new Blob(['﻿'+content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function exportarCSV(){
+  const obra = getCurrentObra();
+  const rows = [];
+  rows.push(['Obra', obra.nombre]);
+  rows.push(['Lugar', obra.lugar]);
+  rows.push(['Cliente', obra.cliente]);
+  rows.push(['Director(es) de Obra', obra.directores.map(d=>d.nombre).join(' | ')]);
+  rows.push(['Fecha de Inicio', fmtFecha(obra.fechaInicio)]);
+  rows.push(['Fecha Estimada de Término', obra.indefinido ? 'Indefinido' : fmtFecha(obra.fechaFinEstimada)]);
+  rows.push([]);
+
+  RAMAS.forEach(r=>{
+    const rama = obra.ramas[r.key];
+    const cd = costoDirecto(rama), ci = costoIndirectoTotal(rama), ct = cd+ci, pv = precioVentaRama(rama);
+
+    rows.push([r.label]);
+    rows.push(['-- Materiales --']);
+    rows.push(['Material','Proveedor','Unidad','Cantidad','Precio Unitario','Total','Agregado']);
+    rama.materiales.forEach(i=> rows.push([i.nombre,i.ubicacion,i.unidad,i.cantidad,i.precioUnitario,calcRowTotal('materiales',i).toFixed(2), fmtFechaHora(i.creadoEn)]));
+    rows.push(['Subtotal Materiales','','','','', subtotal('materiales', rama.materiales).toFixed(2), '']);
+    rows.push([]);
+
+    rows.push(['-- Mano de Obra --']);
+    rows.push(['Descripción','Unidad','Cantidad','Rendimiento','Precio Unitario','Total','Agregado']);
+    rama.manoObra.forEach(i=> rows.push([i.descripcion,i.unidad,i.cantidad,i.rendimiento,i.precioUnitario,calcRowTotal('manoObra',i).toFixed(2), fmtFechaHora(i.creadoEn)]));
+    rows.push(['Subtotal Mano de Obra','','','','', subtotal('manoObra', rama.manoObra).toFixed(2), '']);
+    rows.push([]);
+
+    rows.push(['-- Equipo / Maquinaria --']);
+    rows.push(['Equipo','Unidad','Cantidad','Rendimiento','Precio Unitario','Total','Agregado']);
+    rama.equipo.forEach(i=> rows.push([i.nombre,i.unidad,i.cantidad,i.rendimiento,i.precioUnitario,calcRowTotal('equipo',i).toFixed(2), fmtFechaHora(i.creadoEn)]));
+    rows.push(['Subtotal Equipo','','','','', subtotal('equipo', rama.equipo).toFixed(2), '']);
+    rows.push([]);
+
+    rows.push(['Costo Directo','','','','', cd.toFixed(2)]);
+    rows.push([]);
+
+    rows.push(['-- Costos Indirectos --']);
+    rows.push(['Concepto','Tipo','Valor','','','Total','Agregado']);
+    rama.indirectos.forEach(i=> rows.push([i.concepto, i.tipo==='porcentaje'?'%':'Fijo', i.valor, '', '', totalIndirecto(i,cd).toFixed(2), fmtFechaHora(i.creadoEn)]));
+    rows.push(['Subtotal Costo Indirecto','','','','', ci.toFixed(2), '']);
+    rows.push([]);
+
+    rows.push(['Costo Total','','','','', ct.toFixed(2)]);
+    rows.push(['Utilidad %','','','','', rama.utilidadPct]);
+    rows.push(['Precio de Venta','','','','', pv.toFixed(2)]);
+    rows.push([]);
+    rows.push([]);
+  });
+
+  const tot = obraTotals(obra);
+  rows.push(['RESUMEN OBRA']);
+  rows.push(['Costo Directo Total','','','','', tot.cd.toFixed(2)]);
+  rows.push(['Costo Indirecto Total','','','','', tot.ci.toFixed(2)]);
+  rows.push(['Costo Total','','','','', tot.ct.toFixed(2)]);
+  rows.push(['Precio de Venta Total','','','','', tot.pv.toFixed(2)]);
+
+  const csv = rows.map(r=> r.map(csvEscape).join(',')).join('\n');
+  const filename = (obra.nombre || 'obra').replace(/[^a-z0-9]+/gi,'_') + '_APU.csv';
+  downloadFile(filename, csv, 'text/csv;charset=utf-8;');
+}
+
+// ---------- export PDF (print) ----------
+function buildPrintHTML(obra, ramaKeys){
+  const keys = ramaKeys && ramaKeys.length ? ramaKeys : RAMAS.map(r=>r.key);
+  const ramasIncluidas = RAMAS.filter(r=> keys.includes(r.key));
+  const tot = obraTotals(obra, keys);
+  let html = `<h1>${escapeHtml(obra.nombre)}</h1>
+    <p><strong>Lugar:</strong> ${escapeHtml(obra.lugar)||'—'} &nbsp;&nbsp; <strong>Cliente:</strong> ${escapeHtml(obra.cliente)||'—'}</p>
+    <p><strong>Director(es) de Obra:</strong> ${obra.directores.length ? escapeHtml(obra.directores.map(d=>d.nombre).join(', ')) : '—'}</p>
+    <p><strong>Inicio:</strong> ${fmtFecha(obra.fechaInicio)} &nbsp;&nbsp; <strong>Término estimado:</strong> ${obra.indefinido ? 'Indefinido' : fmtFecha(obra.fechaFinEstimada)}</p>`;
+
+  ramasIncluidas.forEach(r=>{
+    const rama = obra.ramas[r.key];
+    const cd = costoDirecto(rama), ci = costoIndirectoTotal(rama), ct = cd+ci, pv = precioVentaRama(rama);
+    html += `<h2>${r.label}</h2>`;
+
+    html += '<h3>Materiales</h3><table><tr><th>Material</th><th>Proveedor</th><th>Unidad</th><th>Cantidad</th><th>Precio Unitario</th><th>Total</th><th>Agregado</th></tr>';
+    rama.materiales.forEach(i=>{
+      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.ubicacion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${money(i.precioUnitario)}</td><td>${money(calcRowTotal('materiales',i))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+    });
+    html += `<tr><td colspan="5"><strong>Subtotal Materiales</strong></td><td><strong>${money(subtotal('materiales', rama.materiales))}</strong></td><td></td></tr></table>`;
+
+    html += '<h3>Mano de Obra</h3><table><tr><th>Descripción</th><th>Unidad</th><th>Cantidad</th><th>Rendimiento</th><th>Precio Unitario</th><th>Total</th><th>Agregado</th></tr>';
+    rama.manoObra.forEach(i=>{
+      html += `<tr><td>${escapeHtml(i.descripcion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${num(i.rendimiento)}</td><td>${money(i.precioUnitario)}</td><td>${money(calcRowTotal('manoObra',i))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+    });
+    html += `<tr><td colspan="5"><strong>Subtotal Mano de Obra</strong></td><td><strong>${money(subtotal('manoObra', rama.manoObra))}</strong></td><td></td></tr></table>`;
+
+    html += '<h3>Equipo / Maquinaria</h3><table><tr><th>Equipo</th><th>Unidad</th><th>Cantidad</th><th>Rendimiento</th><th>Precio Unitario</th><th>Total</th><th>Agregado</th></tr>';
+    rama.equipo.forEach(i=>{
+      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${num(i.rendimiento)}</td><td>${money(i.precioUnitario)}</td><td>${money(calcRowTotal('equipo',i))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+    });
+    html += `<tr><td colspan="5"><strong>Subtotal Equipo</strong></td><td><strong>${money(subtotal('equipo', rama.equipo))}</strong></td><td></td></tr></table>`;
+
+    html += '<h3>Costos Indirectos</h3><table><tr><th>Concepto</th><th>Tipo</th><th>Valor</th><th>Total</th><th>Agregado</th></tr>';
+    rama.indirectos.forEach(i=>{
+      html += `<tr><td>${escapeHtml(i.concepto)}</td><td>${i.tipo==='porcentaje'?'%':'Fijo'}</td><td>${escapeHtml(i.valor)}</td><td>${money(totalIndirecto(i,cd))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+    });
+    html += `<tr><td colspan="3"><strong>Subtotal Costo Indirecto</strong></td><td><strong>${money(ci)}</strong></td><td></td></tr></table>`;
+
+    html += `<p class="grand">Costo Directo: ${money(cd)} &nbsp;|&nbsp; Costo Indirecto: ${money(ci)} &nbsp;|&nbsp; Costo Total: ${money(ct)} &nbsp;|&nbsp; Utilidad: ${escapeHtml(rama.utilidadPct)}% &nbsp;|&nbsp; <u>Precio de Venta: ${money(pv)}</u></p>`;
+  });
+
+  html += `<h2>Resumen General de la Obra</h2>
+    <p class="grand">Costo Directo Total: ${money(tot.cd)} &nbsp;|&nbsp; Costo Indirecto Total: ${money(tot.ci)} &nbsp;|&nbsp; Costo Total: ${money(tot.ct)}</p>
+    <p class="grand">PRECIO DE VENTA TOTAL: ${money(tot.pv)}</p>`;
+
+  return html;
+}
+function abrirModalPDF(){
+  state.pdfModalOpen = true;
+  if(state.pdfSelectedRamas.length === 0) state.pdfSelectedRamas = [state.currentRama];
+  render();
+}
+function cerrarModalPDF(){ state.pdfModalOpen = false; render(); }
+function toggleRamaPDF(key){
+  const i = state.pdfSelectedRamas.indexOf(key);
+  if(i === -1) state.pdfSelectedRamas.push(key); else state.pdfSelectedRamas.splice(i,1);
+  render();
+}
+function seleccionarTodasRamasPDF(){ state.pdfSelectedRamas = RAMAS.map(r=>r.key); render(); }
+function confirmarExportarPDF(){
+  if(state.pdfSelectedRamas.length === 0){ alert('Selecciona al menos una forma de trabajo.'); return; }
+  const obra = getCurrentObra();
+  document.getElementById('printArea').innerHTML = buildPrintHTML(obra, state.pdfSelectedRamas);
+  state.pdfModalOpen = false;
+  render();
+  window.print();
+}
+function renderModalPDF(){
+  let html = '<div class="modal-overlay"><div class="modal-box">';
+  html += '<h3>Exportar PDF</h3><div class="modal-hint">Elige qué formas de trabajo incluir en el reporte.</div>';
+  html += '<button class="btn-sm modal-selectall" onclick="seleccionarTodasRamasPDF()">Seleccionar todas</button>';
+  html += '<div class="modal-check-list">';
+  RAMAS.forEach(r=>{
+    const checked = state.pdfSelectedRamas.includes(r.key) ? 'checked' : '';
+    html += `<label><input type="checkbox" ${checked} onchange="toggleRamaPDF('${r.key}')"> ${r.label}</label>`;
+  });
+  html += '</div>';
+  html += `<div class="form-actions">
+    <button class="btn-primary" onclick="confirmarExportarPDF()">Generar PDF</button>
+    <button onclick="cerrarModalPDF()">Cancelar</button>
+  </div>`;
+  html += '</div></div>';
+  return html;
+}
+
+// ---------- init ----------
+render();
+</script>
+</body>
+</html>
