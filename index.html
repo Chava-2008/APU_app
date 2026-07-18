@@ -15,6 +15,7 @@
   h1,h2,h3{margin:0 0 8px 0;}
   button{font-family:inherit; cursor:pointer; border:none; border-radius:6px; padding:7px 14px; font-size:13px; background:#e8e9ec; color:var(--text); transition:background .15s;}
   button:hover{background:#dcdde1;}
+  button:disabled{opacity:.5; cursor:not-allowed;}
   .btn-primary{background:var(--primary); color:#fff;}
   .btn-primary:hover{background:var(--primary-dark);}
   .btn-danger{background:#fbe9e8; color:var(--danger);}
@@ -123,21 +124,21 @@ const APARTADOS = [
 const FIELDS = {
   materiales: [
     {key:'nombre', label:'Material', type:'text'},
-    {key:'ubicacion', label:'Proveedor', type:'text'},
-    {key:'unidad', label:'Unidad', type:'text'},
+    {key:'ubicacion', label:'Proveedor', type:'select', dynamic:'proveedores'},
+    {key:'unidad', label:'Unidad', type:'select', dynamic:'unidades'},
     {key:'cantidad', label:'Cantidad', type:'number'},
     {key:'precioUnitario', label:'Precio Unitario', type:'number'}
   ],
   manoObra: [
     {key:'descripcion', label:'Descripción', type:'text'},
-    {key:'unidad', label:'Unidad', type:'text'},
+    {key:'unidad', label:'Unidad', type:'select', dynamic:'unidades'},
     {key:'cantidad', label:'Cantidad', type:'number'},
     {key:'rendimiento', label:'Rendimiento (por jornada)', type:'number'},
     {key:'precioUnitario', label:'Precio Unitario', type:'number'}
   ],
   equipo: [
     {key:'nombre', label:'Equipo/Maquinaria', type:'text'},
-    {key:'unidad', label:'Unidad', type:'text'},
+    {key:'unidad', label:'Unidad', type:'select', dynamic:'unidades'},
     {key:'cantidad', label:'Cantidad', type:'number'},
     {key:'rendimiento', label:'Rendimiento (por jornada)', type:'number'},
     {key:'precioUnitario', label:'Precio Unitario', type:'number'}
@@ -148,6 +149,158 @@ const FIELDS = {
     {key:'valor', label:'Valor', type:'number'}
   ]
 };
+
+// ---------- unidades (selector dinámico) ----------
+const UNIDADES_STORAGE_KEY = 'apu_unidades_v1';
+const UNIDADES_ELIMINADAS_KEY = 'apu_unidades_eliminadas_v1';
+const UNIDADES_NUEVA_VALUE = '__nueva__';
+const UNIDADES_DEFAULT = ['Día','Semana','Tonelada','Lata','Pza (pieza)','Kilo','Galón','Costal','Lote','m2','m3','ml'];
+function loadUnidadesCustom(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(UNIDADES_STORAGE_KEY));
+    return Array.isArray(raw) ? raw : [];
+  }catch(e){ return []; }
+}
+function persistUnidadesCustom(){ localStorage.setItem(UNIDADES_STORAGE_KEY, JSON.stringify(unidadesCustom)); }
+let unidadesCustom = loadUnidadesCustom();
+function loadUnidadesEliminadas(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(UNIDADES_ELIMINADAS_KEY));
+    return Array.isArray(raw) ? raw : [];
+  }catch(e){ return []; }
+}
+function persistUnidadesEliminadas(){ localStorage.setItem(UNIDADES_ELIMINADAS_KEY, JSON.stringify(unidadesEliminadas)); }
+let unidadesEliminadas = loadUnidadesEliminadas();
+function collectUnidadesEnUso(obras){
+  const vals = [];
+  (obras || []).forEach(o=>{
+    RAMAS.forEach(r=>{
+      const rama = o.ramas[r.key];
+      if(!rama) return;
+      ['materiales','manoObra','equipo'].forEach(tipo=>{
+        (rama[tipo] || []).forEach(item=>{ if(item.unidad) vals.push(item.unidad); });
+      });
+    });
+  });
+  return vals;
+}
+function getUnidadesList(){
+  const defaultsDisponibles = UNIDADES_DEFAULT.filter(u=> !unidadesEliminadas.some(e=>e.toLowerCase()===u.toLowerCase()));
+  const combined = [...defaultsDisponibles, ...unidadesCustom, ...collectUnidadesEnUso(state.obras)];
+  const seen = new Set();
+  const result = [];
+  combined.forEach(u=>{
+    const v = String(u).trim();
+    const key = v.toLowerCase();
+    if(v && !seen.has(key)){ seen.add(key); result.push(v); }
+  });
+  return result;
+}
+function getUnidadOptions(){
+  return getUnidadesList().map(u=>[u,u]).concat([[UNIDADES_NUEVA_VALUE,'+ Agregar nueva unidad...']]);
+}
+function agregarUnidadCustom(valor){
+  const v = String(valor||'').trim();
+  if(!v) return;
+  if(!getUnidadesList().some(u=>u.toLowerCase()===v.toLowerCase())){
+    unidadesCustom.push(v);
+    persistUnidadesCustom();
+  }
+}
+function eliminarUnidad(valor){
+  const v = String(valor||'').trim();
+  if(!v) return;
+  const enUso = collectUnidadesEnUso(state.obras).some(u=>u.toLowerCase()===v.toLowerCase());
+  if(enUso){
+    alert(`No se puede eliminar "${v}" porque hay registros que la están usando.`);
+    return;
+  }
+  const esDefault = UNIDADES_DEFAULT.some(u=>u.toLowerCase()===v.toLowerCase());
+  if(esDefault){
+    if(!unidadesEliminadas.some(u=>u.toLowerCase()===v.toLowerCase())){
+      unidadesEliminadas.push(v);
+      persistUnidadesEliminadas();
+    }
+  } else {
+    unidadesCustom = unidadesCustom.filter(u=>u.toLowerCase()!==v.toLowerCase());
+    persistUnidadesCustom();
+  }
+  render();
+}
+function fieldOptions(f, currentValue){
+  if(f.dynamic === 'unidades') return getUnidadOptions();
+  if(f.dynamic === 'proveedores') return getProveedorOptions(currentValue);
+  return f.options;
+}
+function jsAttr(v){ return escapeHtml(JSON.stringify(String(v))); }
+function handleUnidadSelectChange(selectEl){
+  if(selectEl.value === UNIDADES_NUEVA_VALUE){
+    const prev = selectEl.dataset.prev || '';
+    const nueva = prompt('Escribe la nueva unidad:');
+    const val = String(nueva||'').trim();
+    if(val){
+      agregarUnidadCustom(val);
+      let opt = Array.from(selectEl.options).find(o=>o.value === val);
+      if(!opt){
+        opt = document.createElement('option');
+        opt.value = val; opt.textContent = val;
+        const nuevaOpt = Array.from(selectEl.options).find(o=>o.value === UNIDADES_NUEVA_VALUE);
+        selectEl.insertBefore(opt, nuevaOpt);
+      }
+      selectEl.value = val;
+      selectEl.dataset.prev = val;
+    } else {
+      selectEl.value = prev;
+    }
+  } else {
+    selectEl.dataset.prev = selectEl.value;
+  }
+}
+
+// ---------- proveedores (catálogo global) ----------
+const PROVEEDORES_STORAGE_KEY = 'apu_proveedores_v1';
+const TIPOS_PROVEEDOR = [['fisico','Físico'],['digital','Digital']];
+function normalizeProveedor(p){
+  p.id = p.id || uid();
+  p.nombre = p.nombre || '';
+  p.tipo = p.tipo === 'digital' ? 'digital' : 'fisico';
+  p.ubicacion = p.ubicacion || '';
+  p.web = p.web || '';
+  p.telefono = p.telefono || '';
+  p.correo = p.correo || '';
+  p.creadoEn = p.creadoEn || '';
+  return p;
+}
+function loadProveedores(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(PROVEEDORES_STORAGE_KEY)) || [];
+    return raw.map(normalizeProveedor);
+  }catch(e){ return []; }
+}
+function persistProveedores(){ localStorage.setItem(PROVEEDORES_STORAGE_KEY, JSON.stringify(state.proveedores)); }
+function getProveedorOptions(currentValue){
+  const catalogo = state.proveedores.map(p=>[p.id, p.nombre]);
+  const opts = catalogo.length ? catalogo.slice() : [['', 'Sin proveedores — agrégalos en el Catálogo de Proveedores']];
+  if(currentValue && !state.proveedores.some(p=>p.id===currentValue)){
+    opts.unshift([currentValue, `${currentValue} (texto libre)`]);
+  }
+  return opts;
+}
+function resolveProveedorNombre(value){
+  if(!value) return '';
+  const p = state.proveedores.find(x=>x.id===value);
+  return p ? p.nombre : value;
+}
+function resolveProveedorDisplay(value){
+  if(!value) return { text: '—', title: '' };
+  const p = state.proveedores.find(x=>x.id===value);
+  if(!p) return { text: value, title: '' };
+  const esFisico = p.tipo !== 'digital';
+  const detalleLabel = esFisico ? 'Ubicación' : 'Web';
+  const detalle = (esFisico ? p.ubicacion : p.web) || '—';
+  const title = `Tel: ${p.telefono || '—'} · Correo: ${p.correo || '—'} · ${detalleLabel}: ${detalle}`;
+  return { text: p.nombre, title };
+}
 
 // ---------- helpers ----------
 function uid(){ return 'id_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8); }
@@ -264,7 +417,11 @@ let state = {
   editingObraId: null,
   obraSearchQuery: '',
   pdfModalOpen: false,
-  pdfSelectedRamas: RAMAS.map(r=>r.key)
+  pdfSelectedRamas: RAMAS.map(r=>r.key),
+  unidadesModalOpen: false,
+  proveedores: loadProveedores(),
+  nuevoProveedorFormOpen: false,
+  editingProveedorId: null
 };
 
 function getObra(id){ return state.obras.find(o=>o.id===id); }
@@ -337,6 +494,55 @@ function abrirObra(id){
 function editarObraDesdeDetalle(id){ state.view='list'; state.editingObraId=id; render(); }
 function volverLista(){ state.view='list'; state.currentObraId=null; render(); }
 
+// ---------- proveedores: navegación y acciones ----------
+function irAProveedores(){ state.view='proveedores'; render(); }
+function volverListaDesdeProveedores(){ state.view='list'; state.nuevoProveedorFormOpen=false; state.editingProveedorId=null; render(); }
+function toggleProveedorTipoFields(prefix){
+  const tipo = document.getElementById(`${prefix}_tipo`).value;
+  const ubicacionWrap = document.getElementById(`${prefix}_ubicacion_wrap`);
+  const webWrap = document.getElementById(`${prefix}_web_wrap`);
+  if(ubicacionWrap) ubicacionWrap.style.display = tipo === 'fisico' ? '' : 'none';
+  if(webWrap) webWrap.style.display = tipo === 'digital' ? '' : 'none';
+}
+function toggleNuevoProveedorForm(){ state.nuevoProveedorFormOpen = !state.nuevoProveedorFormOpen; render(); }
+function crearProveedor(){
+  const nombre = document.getElementById('new_prov_nombre').value.trim();
+  if(!nombre){ alert('El nombre del proveedor es obligatorio.'); return; }
+  const tipo = document.getElementById('new_prov_tipo').value === 'digital' ? 'digital' : 'fisico';
+  const proveedor = {
+    id: uid(),
+    nombre,
+    tipo,
+    ubicacion: tipo === 'fisico' ? document.getElementById('new_prov_ubicacion').value.trim() : '',
+    web: tipo === 'digital' ? document.getElementById('new_prov_web').value.trim() : '',
+    telefono: document.getElementById('new_prov_telefono').value.trim(),
+    correo: document.getElementById('new_prov_correo').value.trim(),
+    creadoEn: nowISO()
+  };
+  state.proveedores.push(proveedor);
+  state.nuevoProveedorFormOpen = false;
+  persistProveedores(); render();
+}
+function iniciarEdicionProveedor(id){ state.editingProveedorId = id; render(); }
+function cancelarEdicionProveedor(){ state.editingProveedorId = null; render(); }
+function guardarProveedor(id){
+  const p = state.proveedores.find(x=>x.id===id);
+  const nombre = document.getElementById(`edit_prov_${id}_nombre`).value.trim();
+  p.nombre = nombre || p.nombre;
+  p.tipo = document.getElementById(`edit_prov_${id}_tipo`).value === 'digital' ? 'digital' : 'fisico';
+  p.ubicacion = p.tipo === 'fisico' ? document.getElementById(`edit_prov_${id}_ubicacion`).value.trim() : '';
+  p.web = p.tipo === 'digital' ? document.getElementById(`edit_prov_${id}_web`).value.trim() : '';
+  p.telefono = document.getElementById(`edit_prov_${id}_telefono`).value.trim();
+  p.correo = document.getElementById(`edit_prov_${id}_correo`).value.trim();
+  state.editingProveedorId = null;
+  persistProveedores(); render();
+}
+function eliminarProveedor(id){
+  if(!confirm('¿Eliminar este proveedor? Esta acción no se puede deshacer.')) return;
+  state.proveedores = state.proveedores.filter(p=>p.id!==id);
+  persistProveedores(); render();
+}
+
 // ---------- pantalla completa ----------
 function toggleFullScreen(){
   if(!document.fullscreenElement){ document.documentElement.requestFullscreen().catch(()=>{}); }
@@ -356,7 +562,9 @@ function guardarEdicion(tipo,id){
   const item = rama[tipo].find(i=>i.id===id);
   FIELDS[tipo].forEach(f=>{
     const el = document.getElementById(`edit_${tipo}_${id}_${f.key}`);
-    item[f.key] = f.type==='number' ? (Number(el.value)||0) : el.value;
+    let v = f.type==='number' ? (Number(el.value)||0) : el.value;
+    if(f.type==='select' && v === UNIDADES_NUEVA_VALUE) v = fieldOptions(f)[0][0];
+    item[f.key] = v;
   });
   state.editing={tipo:null,id:null};
   persist(); render();
@@ -374,7 +582,7 @@ function agregarItem(tipo){
   FIELDS[tipo].forEach(f=>{
     const el = document.getElementById(`new_${tipo}_${f.key}`);
     let v = f.type==='number' ? (Number(el.value)||0) : el.value.trim();
-    if(f.type==='select' && !v) v = f.options[0][0];
+    if(f.type==='select' && (!v || v === UNIDADES_NUEVA_VALUE)) v = fieldOptions(f)[0][0];
     item[f.key] = v;
     if(f.type==='text' && v) hasValue = true;
     if(f.type==='number' && v) hasValue = true;
@@ -387,7 +595,11 @@ function agregarItem(tipo){
 // ---------- rendering ----------
 function render(){
   const app = document.getElementById('app');
-  app.innerHTML = state.view === 'list' ? renderListView() : renderObraView();
+  let html;
+  if(state.view === 'proveedores') html = renderProveedoresView();
+  else if(state.view === 'obra') html = renderObraView();
+  else html = renderListView();
+  app.innerHTML = html;
 }
 
 function fullScreenBtnHtml(outline){
@@ -401,6 +613,7 @@ function renderListView(){
   html += `<div class="page-header"><h1>Mis Obras</h1>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       ${fullScreenBtnHtml(false)}
+      <button onclick="irAProveedores()">🧾 Proveedores</button>
       <button class="btn-primary" onclick="toggleNuevaObraForm()">${state.nuevaObraFormOpen ? 'Cancelar' : '+ Nueva Obra'}</button>
     </div></div>`;
 
@@ -503,6 +716,81 @@ function renderListView(){
   return html;
 }
 
+function renderProveedoresView(){
+  let html = '<div class="container">';
+  html += `<div class="page-header"><h1>Catálogo de Proveedores</h1>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button onclick="volverListaDesdeProveedores()">&larr; Volver a Obras</button>
+      <button class="btn-primary" onclick="toggleNuevoProveedorForm()">${state.nuevoProveedorFormOpen ? 'Cancelar' : '+ Nuevo Proveedor'}</button>
+    </div></div>`;
+
+  if(state.nuevoProveedorFormOpen){
+    html += `<div class="card" style="margin-top:14px;">
+      <h3>Nuevo Proveedor</h3>
+      <div class="form-grid">
+        <div class="form-field"><label>Nombre del proveedor</label><input id="new_prov_nombre" type="text" placeholder="Ej. Materiales del Norte" onkeydown="if(event.key==='Enter') crearProveedor()"></div>
+        <div class="form-field"><label>Tipo</label>
+          <select id="new_prov_tipo" onchange="toggleProveedorTipoFields('new_prov')">
+            ${TIPOS_PROVEEDOR.map(([val,label])=>`<option value="${val}">${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field" id="new_prov_ubicacion_wrap"><label>Ubicación</label><input id="new_prov_ubicacion" type="text" placeholder="Dirección o zona" onkeydown="if(event.key==='Enter') crearProveedor()"></div>
+        <div class="form-field" id="new_prov_web_wrap" style="display:none;"><label>Página web</label><input id="new_prov_web" type="text" placeholder="https://..." onkeydown="if(event.key==='Enter') crearProveedor()"></div>
+        <div class="form-field"><label>Teléfono</label><input id="new_prov_telefono" type="text" placeholder="Ej. 555 123 4567" onkeydown="if(event.key==='Enter') crearProveedor()"></div>
+        <div class="form-field"><label>Correo electrónico</label><input id="new_prov_correo" type="text" placeholder="correo@ejemplo.com" onkeydown="if(event.key==='Enter') crearProveedor()"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" onclick="crearProveedor()">Guardar Proveedor</button>
+        <button onclick="toggleNuevoProveedorForm()">Cancelar</button>
+      </div>
+    </div>`;
+  }
+
+  if(state.proveedores.length === 0 && !state.nuevoProveedorFormOpen){
+    html += `<p class="empty">Aún no hay proveedores registrados. Crea el primero con "+ Nuevo Proveedor".</p>`;
+  }
+
+  html += '<div class="obras-grid">';
+  state.proveedores.forEach(p=>{
+    if(state.editingProveedorId === p.id){
+      html += `<div class="card obra-card">
+        <div class="form-field"><label>Nombre</label><input id="edit_prov_${p.id}_nombre" type="text" value="${escapeHtml(p.nombre)}"></div>
+        <div class="form-field"><label>Tipo</label>
+          <select id="edit_prov_${p.id}_tipo" onchange="toggleProveedorTipoFields('edit_prov_${p.id}')">
+            ${TIPOS_PROVEEDOR.map(([val,label])=>`<option value="${val}" ${p.tipo===val?'selected':''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field" id="edit_prov_${p.id}_ubicacion_wrap" style="${p.tipo==='fisico'?'':'display:none;'}"><label>Ubicación</label><input id="edit_prov_${p.id}_ubicacion" type="text" value="${escapeHtml(p.ubicacion)}"></div>
+        <div class="form-field" id="edit_prov_${p.id}_web_wrap" style="${p.tipo==='digital'?'':'display:none;'}"><label>Página web</label><input id="edit_prov_${p.id}_web" type="text" value="${escapeHtml(p.web)}"></div>
+        <div class="form-field"><label>Teléfono</label><input id="edit_prov_${p.id}_telefono" type="text" value="${escapeHtml(p.telefono)}"></div>
+        <div class="form-field"><label>Correo electrónico</label><input id="edit_prov_${p.id}_correo" type="text" value="${escapeHtml(p.correo)}"></div>
+        <div class="form-actions">
+          <button class="btn-primary btn-sm" onclick="guardarProveedor('${p.id}')">Guardar</button>
+          <button class="btn-sm" onclick="cancelarEdicionProveedor()">Cancelar</button>
+        </div>
+      </div>`;
+    } else {
+      const tipoInfo = TIPOS_PROVEEDOR.find(t=>t[0]===p.tipo);
+      const tipoLabel = tipoInfo ? tipoInfo[1] : p.tipo;
+      html += `<div class="card obra-card">
+        <div class="nombre">${escapeHtml(p.nombre)}</div>
+        <div class="meta">${p.tipo==='digital' ? '💻' : '🏬'} ${tipoLabel}</div>
+        ${p.tipo==='fisico'
+          ? `<div class="meta">📍 ${escapeHtml(p.ubicacion) || '—'}</div>`
+          : `<div class="meta">🌐 ${p.web ? escapeHtml(p.web) : '—'}</div>`}
+        <div class="meta">📞 ${escapeHtml(p.telefono) || '—'}</div>
+        <div class="meta">✉️ ${escapeHtml(p.correo) || '—'}</div>
+        <div class="acciones">
+          <button class="btn-sm" onclick="iniciarEdicionProveedor('${p.id}')">Editar</button>
+          <button class="btn-danger btn-sm" onclick="eliminarProveedor('${p.id}')">Eliminar</button>
+        </div>
+      </div>`;
+    }
+  });
+  html += '</div></div>';
+  return html;
+}
+
 function renderObraView(){
   const obra = getCurrentObra();
   const isGrafica = state.currentRama === 'grafica';
@@ -522,6 +810,7 @@ function renderObraView(){
     </div>
     <div class="topbar-actions">
       <button class="btn-outline" onclick="volverLista()">&larr; Volver a Obras</button>
+      <button class="btn-outline" onclick="irAProveedores()">🧾 Proveedores</button>
       ${fullScreenBtnHtml(true)}
       <button class="btn-outline" onclick="exportarCSV()">Exportar CSV</button>
       <button class="btn-outline" onclick="abrirModalPDF()">Exportar PDF</button>
@@ -529,6 +818,7 @@ function renderObraView(){
   </div></div>`;
 
   if(state.pdfModalOpen) html += renderModalPDF();
+  if(state.unidadesModalOpen) html += renderModalUnidades();
 
   html += '<div class="container">';
 
@@ -571,6 +861,10 @@ function renderObraView(){
       html += `<button class="subtab-btn ${active}" onclick="cambiarApartado('${a.key}')">${a.label}</button>`;
     });
     html += '</div>';
+
+    if(state.currentApartado !== 'indirectos'){
+      html += `<div style="margin:-4px 0 10px 0;"><button class="btn-sm" onclick="abrirModalUnidades()">⚙️ Administrar unidades</button></div>`;
+    }
 
     html += `<div class="table-wrap">${renderItemsTable(state.currentApartado, rama, obra.areaM2)}</div>`;
 
@@ -682,9 +976,11 @@ function renderItemsTable(tipo, rama, areaM2){
     cfg.forEach(f=>{
       if(isEditing){
         if(f.type === 'select'){
-          html += `<td><select id="edit_${tipo}_${item.id}_${f.key}">`;
-          f.options.forEach(([val,label])=>{
-            html += `<option value="${val}" ${item[f.key]===val?'selected':''}>${label}</option>`;
+          const opts = fieldOptions(f, item[f.key]);
+          const onchangeAttr = f.dynamic==='unidades' ? `onchange="handleUnidadSelectChange(this)"` : '';
+          html += `<td><select id="edit_${tipo}_${item.id}_${f.key}" data-prev="${escapeHtml(item[f.key])}" ${onchangeAttr}>`;
+          opts.forEach(([val,label])=>{
+            html += `<option value="${escapeHtml(val)}" ${item[f.key]===val?'selected':''}>${escapeHtml(label)}</option>`;
           });
           html += '</select></td>';
         } else {
@@ -692,8 +988,11 @@ function renderItemsTable(tipo, rama, areaM2){
         }
       } else {
         let display;
-        if(f.type === 'select'){
-          const found = f.options.find(o=>o[0]===item[f.key]);
+        if(f.dynamic === 'proveedores'){
+          const info = resolveProveedorDisplay(item[f.key]);
+          display = info.title ? `<span title="${escapeHtml(info.title)}">${escapeHtml(info.text)}</span>` : escapeHtml(info.text);
+        } else if(f.type === 'select'){
+          const found = fieldOptions(f, item[f.key]).find(o=>o[0]===item[f.key]);
           display = found ? found[1] : escapeHtml(item[f.key]);
         } else if(f.type === 'number'){
           display = num(item[f.key]);
@@ -718,8 +1017,10 @@ function renderItemsTable(tipo, rama, areaM2){
   html += '<tr class="new-row">';
   cfg.forEach(f=>{
     if(f.type === 'select'){
-      html += `<td><select id="new_${tipo}_${f.key}">`;
-      f.options.forEach(([val,label])=> html += `<option value="${val}">${label}</option>`);
+      const opts = fieldOptions(f);
+      const onchangeAttr = f.dynamic==='unidades' ? `onchange="handleUnidadSelectChange(this)"` : '';
+      html += `<td><select id="new_${tipo}_${f.key}" data-prev="${escapeHtml(opts[0][0])}" ${onchangeAttr}>`;
+      opts.forEach(([val,label])=> html += `<option value="${escapeHtml(val)}">${escapeHtml(label)}</option>`);
       html += '</select></td>';
     } else {
       html += `<td><input id="new_${tipo}_${f.key}" type="${f.type}" ${f.type==='number'?'step="any"':''} placeholder="${f.label}" onkeydown="if(event.key==='Enter') agregarItem('${tipo}')"></td>`;
@@ -769,7 +1070,7 @@ function exportarCSV(){
     rama.materiales.forEach(i=>{
       const rt = calcRowTotal('materiales',i);
       const m2 = valorPorM2(rt, obra.areaM2);
-      rows.push([i.nombre,i.ubicacion,i.unidad,i.cantidad,i.precioUnitario,rt.toFixed(2), m2!==null?m2.toFixed(2):'', fmtFechaHora(i.creadoEn)]);
+      rows.push([i.nombre,resolveProveedorNombre(i.ubicacion),i.unidad,i.cantidad,i.precioUnitario,rt.toFixed(2), m2!==null?m2.toFixed(2):'', fmtFechaHora(i.creadoEn)]);
     });
     rows.push(['Subtotal Materiales','','','','', subtotal('materiales', rama.materiales).toFixed(2), '', '']);
     rows.push([]);
@@ -845,7 +1146,7 @@ function buildPrintHTML(obra, ramaKeys){
     html += '<h3>Materiales</h3><table><tr><th>Material</th><th>Proveedor</th><th>Unidad</th><th>Cantidad</th><th>Precio Unitario</th><th>Total</th><th>Costo por m²</th><th>Agregado</th></tr>';
     rama.materiales.forEach(i=>{
       const rt = calcRowTotal('materiales',i);
-      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.ubicacion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${money(i.precioUnitario)}</td><td>${money(rt)}</td><td>${moneyPorM2(rt, obra.areaM2)}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(resolveProveedorNombre(i.ubicacion))}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${money(i.precioUnitario)}</td><td>${money(rt)}</td><td>${moneyPorM2(rt, obra.areaM2)}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
     });
     html += `<tr><td colspan="5"><strong>Subtotal Materiales</strong></td><td><strong>${money(subtotal('materiales', rama.materiales))}</strong></td><td></td><td></td></tr></table>`;
 
@@ -913,6 +1214,31 @@ function renderModalPDF(){
     <button class="btn-primary" onclick="confirmarExportarPDF()">Generar PDF</button>
     <button onclick="cerrarModalPDF()">Cancelar</button>
   </div>`;
+  html += '</div></div>';
+  return html;
+}
+
+// ---------- modal unidades ----------
+function abrirModalUnidades(){ state.unidadesModalOpen = true; render(); }
+function cerrarModalUnidades(){ state.unidadesModalOpen = false; render(); }
+function renderModalUnidades(){
+  const lista = getUnidadesList();
+  const enUsoSet = new Set(collectUnidadesEnUso(state.obras).map(u=>u.toLowerCase()));
+  let html = '<div class="modal-overlay"><div class="modal-box">';
+  html += '<h3>Administrar Unidades</h3><div class="modal-hint">Solo se pueden eliminar unidades que ningún registro esté usando actualmente.</div>';
+  html += '<div class="modal-check-list" style="max-height:320px; overflow-y:auto;">';
+  if(lista.length === 0){
+    html += '<p class="empty">No hay unidades disponibles.</p>';
+  }
+  lista.forEach(u=>{
+    const enUso = enUsoSet.has(u.toLowerCase());
+    html += `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid #eef0f2;">
+      <span>${escapeHtml(u)}${enUso ? ' <span class="meta" style="font-style:italic;">(en uso)</span>' : ''}</span>
+      <button class="btn-sm btn-danger" ${enUso ? 'disabled title="En uso: no se puede eliminar"' : ''} onclick="eliminarUnidad(${jsAttr(u)})">Eliminar</button>
+    </div>`;
+  });
+  html += '</div>';
+  html += `<div class="form-actions"><button onclick="cerrarModalUnidades()">Cerrar</button></div>`;
   html += '</div></div>';
   return html;
 }
