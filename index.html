@@ -67,6 +67,14 @@
   .resumen .item.venta .lbl{color:#e3f0ea;}
   .resumen .item.venta .val{color:#fff; font-size:20px;}
   .resumen .item.utilidad input{margin-top:4px;}
+  .grafica-wrap{display:flex; gap:32px; align-items:center; flex-wrap:wrap; margin-top:14px;}
+  .grafica-pie-box{flex:0 0 220px; max-width:220px; width:100%;}
+  .grafica-pie{width:100%; height:auto; display:block;}
+  .grafica-list{flex:1 1 260px; min-width:220px; display:flex; flex-direction:column; gap:12px;}
+  .grafica-list-row{display:flex; align-items:center; gap:10px; font-size:13.5px;}
+  .grafica-list-label{font-weight:600; flex:1;}
+  .grafica-list-value{font-weight:700; white-space:nowrap;}
+  .grafica-swatch{width:12px; height:12px; border-radius:3px; flex:none;}
   .empty{color:var(--muted); font-style:italic; padding:14px;}
   .link-btn{background:none; border:none; color:inherit; text-decoration:underline; padding:0; font-size:12px; opacity:.9;}
   .back-row{margin-bottom:6px;}
@@ -222,6 +230,17 @@ function obraTotals(obra, ramaKeys){
     cd += costoDirecto(ra); ci += costoIndirectoTotal(ra); ct += costoTotalRama(ra); pv += precioVentaRama(ra);
   });
   return {cd, ci, ct, pv};
+}
+function obraRubroTotals(obra){
+  let materiales=0, manoObra=0, equipo=0, indirectos=0;
+  RAMAS.forEach(r=>{
+    const ra = obra.ramas[r.key];
+    materiales += subtotal('materiales', ra.materiales);
+    manoObra += subtotal('manoObra', ra.manoObra);
+    equipo += subtotal('equipo', ra.equipo);
+    indirectos += costoIndirectoTotal(ra);
+  });
+  return {materiales, manoObra, equipo, indirectos};
 }
 function valorPorM2(valor, area){
   const a = Number(area) || 0;
@@ -486,8 +505,10 @@ function renderListView(){
 
 function renderObraView(){
   const obra = getCurrentObra();
-  const rama = obra.ramas[state.currentRama];
+  const isGrafica = state.currentRama === 'grafica';
+  const rama = isGrafica ? null : obra.ramas[state.currentRama];
   const tot = obraTotals(obra);
+  const rub = obraRubroTotals(obra);
 
   let html = `<div class="topbar"><div class="topbar-inner">
     <div class="topbar-title">
@@ -520,6 +541,10 @@ function renderObraView(){
       <div class="item"><div class="lbl">Costo Indirecto Total</div><div class="val">${money(tot.ci)}</div></div>
       <div class="item total"><div class="lbl">Costo Total</div><div class="val">${money(tot.ct)}</div></div>
       <div class="item"><div class="lbl">Costo Total por m²</div><div class="val">${moneyPorM2(tot.ct, obra.areaM2)}</div></div>
+      <div class="item"><div class="lbl">Materiales por m²</div><div class="val">${moneyPorM2(rub.materiales, obra.areaM2)}</div></div>
+      <div class="item"><div class="lbl">Mano de Obra por m²</div><div class="val">${moneyPorM2(rub.manoObra, obra.areaM2)}</div></div>
+      <div class="item"><div class="lbl">Equipo/Maquinaria por m²</div><div class="val">${moneyPorM2(rub.equipo, obra.areaM2)}</div></div>
+      <div class="item"><div class="lbl">Costos Indirectos por m²</div><div class="val">${moneyPorM2(rub.indirectos, obra.areaM2)}</div></div>
       <div class="item venta"><div class="lbl">Precio de Venta Total</div><div class="val">${money(tot.pv)}</div></div>
       <div class="item"><div class="lbl">Precio de Venta por m²</div><div class="val">${moneyPorM2(tot.pv, obra.areaM2)}</div></div>
     </div>
@@ -531,53 +556,123 @@ function renderObraView(){
     const active = r.key === state.currentRama ? 'active' : '';
     html += `<button class="tab-btn ${active}" onclick="cambiarRama('${r.key}')">${r.label}</button>`;
   });
+  html += `<button class="tab-btn ${isGrafica ? 'active' : ''}" onclick="cambiarRama('grafica')">Gráfica</button>`;
   html += '</div>';
 
   html += '<div class="rama-panel">';
 
-  // apartado subtabs
-  html += '<div class="subtabs">';
-  APARTADOS.forEach(a=>{
-    const active = a.key === state.currentApartado ? 'active' : '';
-    html += `<button class="subtab-btn ${active}" onclick="cambiarApartado('${a.key}')">${a.label}</button>`;
-  });
-  html += '</div>';
+  if(isGrafica){
+    html += renderGraficaPanel(obra, tot, rub);
+  } else {
+    // apartado subtabs
+    html += '<div class="subtabs">';
+    APARTADOS.forEach(a=>{
+      const active = a.key === state.currentApartado ? 'active' : '';
+      html += `<button class="subtab-btn ${active}" onclick="cambiarApartado('${a.key}')">${a.label}</button>`;
+    });
+    html += '</div>';
 
-  html += `<div class="table-wrap">${renderItemsTable(state.currentApartado, rama)}</div>`;
+    html += `<div class="table-wrap">${renderItemsTable(state.currentApartado, rama, obra.areaM2)}</div>`;
 
-  // resumen
-  const sm = subtotal('materiales', rama.materiales), smo = subtotal('manoObra', rama.manoObra), se = subtotal('equipo', rama.equipo);
-  const cd = sm+smo+se, ci = costoIndirectoTotal(rama), ct = cd+ci, pv = precioVentaRama(rama);
-  html += `<div class="resumen">
-    <div class="item"><div class="lbl">Subtotal Materiales</div><div class="val">${money(sm)}</div></div>
-    <div class="item"><div class="lbl">Subtotal Mano de Obra</div><div class="val">${money(smo)}</div></div>
-    <div class="item"><div class="lbl">Subtotal Equipo</div><div class="val">${money(se)}</div></div>
-    <div class="item total"><div class="lbl">Costo Directo</div><div class="val">${money(cd)}</div></div>
-    <div class="item"><div class="lbl">Costo Indirecto</div><div class="val">${money(ci)}</div></div>
-    <div class="item total"><div class="lbl">Costo Total</div><div class="val">${money(ct)}</div></div>
-    <div class="item utilidad"><div class="lbl">Utilidad (%)</div>
-      <input type="number" step="any" value="${escapeHtml(rama.utilidadPct)}" onchange="cambiarUtilidad(this.value)">
-    </div>
-    <div class="item venta"><div class="lbl">Precio de Venta (rama)</div><div class="val">${money(pv)}</div></div>
-  </div>`;
+    // resumen
+    const sm = subtotal('materiales', rama.materiales), smo = subtotal('manoObra', rama.manoObra), se = subtotal('equipo', rama.equipo);
+    const cd = sm+smo+se, ci = costoIndirectoTotal(rama), ct = cd+ci, pv = precioVentaRama(rama);
+    html += `<div class="resumen">
+      <div class="item"><div class="lbl">Subtotal Materiales</div><div class="val">${money(sm)}</div></div>
+      <div class="item"><div class="lbl">Subtotal Mano de Obra</div><div class="val">${money(smo)}</div></div>
+      <div class="item"><div class="lbl">Subtotal Equipo</div><div class="val">${money(se)}</div></div>
+      <div class="item total"><div class="lbl">Costo Directo</div><div class="val">${money(cd)}</div></div>
+      <div class="item"><div class="lbl">Costo Indirecto</div><div class="val">${money(ci)}</div></div>
+      <div class="item total"><div class="lbl">Costo Total</div><div class="val">${money(ct)}</div></div>
+      <div class="item utilidad"><div class="lbl">Utilidad (%)</div>
+        <input type="number" step="any" value="${escapeHtml(rama.utilidadPct)}" onchange="cambiarUtilidad(this.value)">
+      </div>
+      <div class="item venta"><div class="lbl">Precio de Venta (rama)</div><div class="val">${money(pv)}</div></div>
+    </div>`;
+  }
 
   html += '</div></div>';
   return html;
 }
 
-function renderItemsTable(tipo, rama){
+function polarToCartesian(cx, cy, r, angleDeg){
+  const rad = angleDeg * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function describeArcPath(cx, cy, r, startAngle, endAngle){
+  const start = polarToCartesian(cx, cy, r, startAngle);
+  const end = polarToCartesian(cx, cy, r, endAngle);
+  const largeArcFlag = (endAngle - startAngle) <= 180 ? 0 : 1;
+  return `M ${cx} ${cy} L ${start.x.toFixed(3)} ${start.y.toFixed(3)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)} Z`;
+}
+function buildPieSVG(rubros, total){
+  const cx = 100, cy = 100, radius = 90;
+  if(total <= 0){
+    return `<svg viewBox="0 0 200 200" class="grafica-pie" role="img" aria-label="Sin datos para graficar">
+      <circle cx="${cx}" cy="${cy}" r="${radius}" fill="#eef0f2" stroke="var(--border)" stroke-width="1"></circle>
+      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" font-size="13" fill="#9aa0a8">Sin datos</text>
+    </svg>`;
+  }
+  let angle = -90;
+  let content = '';
+  rubros.forEach(item=>{
+    const pct = item.valor / total;
+    if(pct <= 0) return;
+    const startAngle = angle;
+    const sweep = pct * 360;
+    const endAngle = angle + sweep;
+    angle = endAngle;
+    if(sweep >= 359.99){
+      content += `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${item.color}"></circle>`;
+      return;
+    }
+    content += `<path d="${describeArcPath(cx,cy,radius,startAngle,endAngle)}" fill="${item.color}" stroke="var(--panel)" stroke-width="2"></path>`;
+  });
+  return `<svg viewBox="0 0 200 200" class="grafica-pie" role="img" aria-label="Distribución del costo total por rubro">${content}</svg>`;
+}
+function renderGraficaPanel(obra, tot, rub){
+  const total = tot.ct;
+  const rubros = [
+    {label:'Materiales', valor: rub.materiales, color:'#189a6c'},
+    {label:'Mano de Obra', valor: rub.manoObra, color:'#b8791f'},
+    {label:'Equipo / Maquinaria', valor: rub.equipo, color:'#3f6fa8'},
+    {label:'Costos Indirectos', valor: rub.indirectos, color:'#b3423e'}
+  ];
+
+  let html = '<h3>Distribución del Costo Total por Rubro</h3>';
+  html += '<div class="grafica-wrap">';
+  html += `<div class="grafica-pie-box">${buildPieSVG(rubros, total)}</div>`;
+  html += '<div class="grafica-list">';
+  rubros.forEach(r=>{
+    const pct = total > 0 ? (r.valor/total*100) : 0;
+    html += `<div class="grafica-list-row">
+      <span class="grafica-swatch" style="background:${r.color};"></span>
+      <span class="grafica-list-label">${r.label}</span>
+      <span class="grafica-list-value">${money(r.valor)} — ${num(pct,1)}%</span>
+    </div>`;
+  });
+  html += '</div>';
+  html += '</div>';
+  html += `<p class="meta" style="margin-top:14px; color:var(--muted);">Costo Total de la Obra (todas las ramas): <strong style="color:var(--text);">${money(total)}</strong></p>`;
+  return html;
+}
+
+function renderItemsTable(tipo, rama, areaM2){
   const cfg = FIELDS[tipo];
   const items = rama[tipo];
   const cd = costoDirecto(rama);
   const editing = state.editing;
   const subtotalVal = tipo === 'indirectos' ? items.reduce((s,i)=> s + totalIndirecto(i, cd), 0) : subtotal(tipo, items);
+  const showM2 = tipo !== 'indirectos';
 
   let html = '<table class="data-table"><thead><tr>';
   cfg.forEach(f=> html += `<th>${f.label}</th>`);
-  html += '<th>Total</th><th>Agregado</th><th>Acciones</th></tr></thead><tbody>';
+  html += '<th>Total</th>';
+  if(showM2) html += '<th>Costo por m²</th>';
+  html += '<th>Agregado</th><th>Acciones</th></tr></thead><tbody>';
 
   if(items.length === 0){
-    html += `<tr><td colspan="${cfg.length+3}" class="empty">Sin registros todavía. Agrega el primero abajo.</td></tr>`;
+    html += `<tr><td colspan="${cfg.length+3+(showM2?1:0)}" class="empty">Sin registros todavía. Agrega el primero abajo.</td></tr>`;
   }
 
   items.forEach(item=>{
@@ -609,6 +704,7 @@ function renderItemsTable(tipo, rama){
       }
     });
     html += `<td>${money(rowTotal)}</td>`;
+    if(showM2) html += `<td>${moneyPorM2(rowTotal, areaM2)}</td>`;
     html += `<td>${fmtFechaHora(item.creadoEn)}</td>`;
     if(isEditing){
       html += `<td class="actions"><button class="btn-sm btn-primary" onclick="guardarEdicion('${tipo}','${item.id}')">Guardar</button> <button class="btn-sm" onclick="cancelarEdicion()">Cancelar</button></td>`;
@@ -629,10 +725,12 @@ function renderItemsTable(tipo, rama){
       html += `<td><input id="new_${tipo}_${f.key}" type="${f.type}" ${f.type==='number'?'step="any"':''} placeholder="${f.label}" onkeydown="if(event.key==='Enter') agregarItem('${tipo}')"></td>`;
     }
   });
-  html += `<td>—</td><td>—</td><td class="actions"><button class="btn-sm btn-primary" onclick="agregarItem('${tipo}')">Agregar</button></td>`;
+  html += `<td>—</td>`;
+  if(showM2) html += `<td>—</td>`;
+  html += `<td>—</td><td class="actions"><button class="btn-sm btn-primary" onclick="agregarItem('${tipo}')">Agregar</button></td>`;
   html += '</tr>';
 
-  html += `</tbody><tfoot><tr><td colspan="${cfg.length}">Subtotal</td><td colspan="3">${money(subtotalVal)}</td></tr></tfoot></table>`;
+  html += `</tbody><tfoot><tr><td colspan="${cfg.length}">Subtotal</td><td colspan="${3+(showM2?1:0)}">${money(subtotalVal)}</td></tr></tfoot></table>`;
   return html;
 }
 
@@ -667,21 +765,33 @@ function exportarCSV(){
 
     rows.push([r.label]);
     rows.push(['-- Materiales --']);
-    rows.push(['Material','Proveedor','Unidad','Cantidad','Precio Unitario','Total','Agregado']);
-    rama.materiales.forEach(i=> rows.push([i.nombre,i.ubicacion,i.unidad,i.cantidad,i.precioUnitario,calcRowTotal('materiales',i).toFixed(2), fmtFechaHora(i.creadoEn)]));
-    rows.push(['Subtotal Materiales','','','','', subtotal('materiales', rama.materiales).toFixed(2), '']);
+    rows.push(['Material','Proveedor','Unidad','Cantidad','Precio Unitario','Total','Costo por m²','Agregado']);
+    rama.materiales.forEach(i=>{
+      const rt = calcRowTotal('materiales',i);
+      const m2 = valorPorM2(rt, obra.areaM2);
+      rows.push([i.nombre,i.ubicacion,i.unidad,i.cantidad,i.precioUnitario,rt.toFixed(2), m2!==null?m2.toFixed(2):'', fmtFechaHora(i.creadoEn)]);
+    });
+    rows.push(['Subtotal Materiales','','','','', subtotal('materiales', rama.materiales).toFixed(2), '', '']);
     rows.push([]);
 
     rows.push(['-- Mano de Obra --']);
-    rows.push(['Descripción','Unidad','Cantidad','Rendimiento','Precio Unitario','Total','Agregado']);
-    rama.manoObra.forEach(i=> rows.push([i.descripcion,i.unidad,i.cantidad,i.rendimiento,i.precioUnitario,calcRowTotal('manoObra',i).toFixed(2), fmtFechaHora(i.creadoEn)]));
-    rows.push(['Subtotal Mano de Obra','','','','', subtotal('manoObra', rama.manoObra).toFixed(2), '']);
+    rows.push(['Descripción','Unidad','Cantidad','Rendimiento','Precio Unitario','Total','Costo por m²','Agregado']);
+    rama.manoObra.forEach(i=>{
+      const rt = calcRowTotal('manoObra',i);
+      const m2 = valorPorM2(rt, obra.areaM2);
+      rows.push([i.descripcion,i.unidad,i.cantidad,i.rendimiento,i.precioUnitario,rt.toFixed(2), m2!==null?m2.toFixed(2):'', fmtFechaHora(i.creadoEn)]);
+    });
+    rows.push(['Subtotal Mano de Obra','','','','', subtotal('manoObra', rama.manoObra).toFixed(2), '', '']);
     rows.push([]);
 
     rows.push(['-- Equipo / Maquinaria --']);
-    rows.push(['Equipo','Unidad','Cantidad','Rendimiento','Precio Unitario','Total','Agregado']);
-    rama.equipo.forEach(i=> rows.push([i.nombre,i.unidad,i.cantidad,i.rendimiento,i.precioUnitario,calcRowTotal('equipo',i).toFixed(2), fmtFechaHora(i.creadoEn)]));
-    rows.push(['Subtotal Equipo','','','','', subtotal('equipo', rama.equipo).toFixed(2), '']);
+    rows.push(['Equipo','Unidad','Cantidad','Rendimiento','Precio Unitario','Total','Costo por m²','Agregado']);
+    rama.equipo.forEach(i=>{
+      const rt = calcRowTotal('equipo',i);
+      const m2 = valorPorM2(rt, obra.areaM2);
+      rows.push([i.nombre,i.unidad,i.cantidad,i.rendimiento,i.precioUnitario,rt.toFixed(2), m2!==null?m2.toFixed(2):'', fmtFechaHora(i.creadoEn)]);
+    });
+    rows.push(['Subtotal Equipo','','','','', subtotal('equipo', rama.equipo).toFixed(2), '', '']);
     rows.push([]);
 
     rows.push(['Costo Directo','','','','', cd.toFixed(2)]);
@@ -732,23 +842,26 @@ function buildPrintHTML(obra, ramaKeys){
     const cd = costoDirecto(rama), ci = costoIndirectoTotal(rama), ct = cd+ci, pv = precioVentaRama(rama);
     html += `<h2>${r.label}</h2>`;
 
-    html += '<h3>Materiales</h3><table><tr><th>Material</th><th>Proveedor</th><th>Unidad</th><th>Cantidad</th><th>Precio Unitario</th><th>Total</th><th>Agregado</th></tr>';
+    html += '<h3>Materiales</h3><table><tr><th>Material</th><th>Proveedor</th><th>Unidad</th><th>Cantidad</th><th>Precio Unitario</th><th>Total</th><th>Costo por m²</th><th>Agregado</th></tr>';
     rama.materiales.forEach(i=>{
-      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.ubicacion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${money(i.precioUnitario)}</td><td>${money(calcRowTotal('materiales',i))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+      const rt = calcRowTotal('materiales',i);
+      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.ubicacion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${money(i.precioUnitario)}</td><td>${money(rt)}</td><td>${moneyPorM2(rt, obra.areaM2)}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
     });
-    html += `<tr><td colspan="5"><strong>Subtotal Materiales</strong></td><td><strong>${money(subtotal('materiales', rama.materiales))}</strong></td><td></td></tr></table>`;
+    html += `<tr><td colspan="5"><strong>Subtotal Materiales</strong></td><td><strong>${money(subtotal('materiales', rama.materiales))}</strong></td><td></td><td></td></tr></table>`;
 
-    html += '<h3>Mano de Obra</h3><table><tr><th>Descripción</th><th>Unidad</th><th>Cantidad</th><th>Rendimiento</th><th>Precio Unitario</th><th>Total</th><th>Agregado</th></tr>';
+    html += '<h3>Mano de Obra</h3><table><tr><th>Descripción</th><th>Unidad</th><th>Cantidad</th><th>Rendimiento</th><th>Precio Unitario</th><th>Total</th><th>Costo por m²</th><th>Agregado</th></tr>';
     rama.manoObra.forEach(i=>{
-      html += `<tr><td>${escapeHtml(i.descripcion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${num(i.rendimiento)}</td><td>${money(i.precioUnitario)}</td><td>${money(calcRowTotal('manoObra',i))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+      const rt = calcRowTotal('manoObra',i);
+      html += `<tr><td>${escapeHtml(i.descripcion)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${num(i.rendimiento)}</td><td>${money(i.precioUnitario)}</td><td>${money(rt)}</td><td>${moneyPorM2(rt, obra.areaM2)}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
     });
-    html += `<tr><td colspan="5"><strong>Subtotal Mano de Obra</strong></td><td><strong>${money(subtotal('manoObra', rama.manoObra))}</strong></td><td></td></tr></table>`;
+    html += `<tr><td colspan="5"><strong>Subtotal Mano de Obra</strong></td><td><strong>${money(subtotal('manoObra', rama.manoObra))}</strong></td><td></td><td></td></tr></table>`;
 
-    html += '<h3>Equipo / Maquinaria</h3><table><tr><th>Equipo</th><th>Unidad</th><th>Cantidad</th><th>Rendimiento</th><th>Precio Unitario</th><th>Total</th><th>Agregado</th></tr>';
+    html += '<h3>Equipo / Maquinaria</h3><table><tr><th>Equipo</th><th>Unidad</th><th>Cantidad</th><th>Rendimiento</th><th>Precio Unitario</th><th>Total</th><th>Costo por m²</th><th>Agregado</th></tr>';
     rama.equipo.forEach(i=>{
-      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${num(i.rendimiento)}</td><td>${money(i.precioUnitario)}</td><td>${money(calcRowTotal('equipo',i))}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
+      const rt = calcRowTotal('equipo',i);
+      html += `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(i.unidad)}</td><td>${num(i.cantidad)}</td><td>${num(i.rendimiento)}</td><td>${money(i.precioUnitario)}</td><td>${money(rt)}</td><td>${moneyPorM2(rt, obra.areaM2)}</td><td>${fmtFechaHora(i.creadoEn)}</td></tr>`;
     });
-    html += `<tr><td colspan="5"><strong>Subtotal Equipo</strong></td><td><strong>${money(subtotal('equipo', rama.equipo))}</strong></td><td></td></tr></table>`;
+    html += `<tr><td colspan="5"><strong>Subtotal Equipo</strong></td><td><strong>${money(subtotal('equipo', rama.equipo))}</strong></td><td></td><td></td></tr></table>`;
 
     html += '<h3>Costos Indirectos</h3><table><tr><th>Concepto</th><th>Tipo</th><th>Valor</th><th>Total</th><th>Agregado</th></tr>';
     rama.indirectos.forEach(i=>{
@@ -762,7 +875,7 @@ function buildPrintHTML(obra, ramaKeys){
   html += `<h2>Resumen General de la Obra</h2>
     <p class="grand">Costo Directo Total: ${money(tot.cd)} &nbsp;|&nbsp; Costo Indirecto Total: ${money(tot.ci)} &nbsp;|&nbsp; Costo Total: ${money(tot.ct)}</p>
     <p class="grand">PRECIO DE VENTA TOTAL: ${money(tot.pv)}</p>
-    <p class="grand">Área: ${obra.areaM2 ? num(obra.areaM2)+' m²' : '—'} &nbsp;|&nbsp; Precio de Venta por m²: ${moneyPorM2(tot.pv, obra.areaM2)} &nbsp;|&nbsp; Costo Total por m²: ${moneyPorM2(tot.ct, obra.areaM2)}</p>`;
+    <p class="grand">Área: ${obra.areaM2 ? num(obra.areaM2)+' m²' : '—'} &nbsp;|&nbsp; Precio Unitario por m²: ${moneyPorM2(tot.pv, obra.areaM2)} &nbsp;|&nbsp; Costo Total por m²: ${moneyPorM2(tot.ct, obra.areaM2)}</p>`;
 
   return html;
 }
