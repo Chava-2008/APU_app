@@ -173,7 +173,7 @@ function nuevaRamaData(){ return {materiales:[], manoObra:[], equipo:[], indirec
 function nuevaObra(nombre, lugar, cliente){
   const ramas = {};
   RAMAS.forEach(r=> ramas[r.key] = nuevaRamaData());
-  return {id:uid(), nombre, lugar, cliente, ramas, directores:[], fechaInicio:'', fechaFinEstimada:'', indefinido:false};
+  return {id:uid(), nombre, lugar, cliente, ramas, directores:[], fechaInicio:'', fechaFinEstimada:'', indefinido:false, areaM2:0};
 }
 function normalizeObra(o){
   o.ramas = o.ramas || {};
@@ -190,6 +190,7 @@ function normalizeObra(o){
   o.fechaInicio = o.fechaInicio || '';
   o.fechaFinEstimada = o.fechaFinEstimada || '';
   o.indefinido = !!o.indefinido;
+  o.areaM2 = Number(o.areaM2) || 0;
   return o;
 }
 function loadObras(){
@@ -221,6 +222,15 @@ function obraTotals(obra, ramaKeys){
     cd += costoDirecto(ra); ci += costoIndirectoTotal(ra); ct += costoTotalRama(ra); pv += precioVentaRama(ra);
   });
   return {cd, ci, ct, pv};
+}
+function valorPorM2(valor, area){
+  const a = Number(area) || 0;
+  if(a <= 0) return null;
+  return valor / a;
+}
+function moneyPorM2(valor, area){
+  const v = valorPorM2(valor, area);
+  return v === null ? '—' : money(v);
 }
 
 // ---------- state ----------
@@ -257,6 +267,7 @@ function crearObra(){
   if(!nombre){ alert('El nombre de la obra es obligatorio.'); return; }
   const indefinido = document.getElementById('new_obra_indefinido').checked;
   const obra = nuevaObra(nombre, lugar, cliente);
+  obra.areaM2 = Number(document.getElementById('new_obra_area').value) || 0;
   obra.fechaInicio = document.getElementById('new_obra_fechaInicio').value;
   obra.indefinido = indefinido;
   obra.fechaFinEstimada = indefinido ? '' : document.getElementById('new_obra_fechaFin').value;
@@ -287,6 +298,7 @@ function guardarObra(id){
   obra.nombre = nombre || obra.nombre;
   obra.lugar = document.getElementById(`edit_obra_${id}_lugar`).value.trim();
   obra.cliente = document.getElementById(`edit_obra_${id}_cliente`).value.trim();
+  obra.areaM2 = Number(document.getElementById(`edit_obra_${id}_area`).value) || 0;
   obra.fechaInicio = document.getElementById(`edit_obra_${id}_fechaInicio`).value;
   obra.indefinido = document.getElementById(`edit_obra_${id}_indefinido`).checked;
   obra.fechaFinEstimada = obra.indefinido ? '' : document.getElementById(`edit_obra_${id}_fechaFin`).value;
@@ -380,6 +392,7 @@ function renderListView(){
         <div class="form-field"><label>Nombre de la obra</label><input id="new_obra_nombre" type="text" placeholder="Ej. Casa Pérez" onkeydown="if(event.key==='Enter') crearObra()"></div>
         <div class="form-field"><label>Lugar</label><input id="new_obra_lugar" type="text" placeholder="Ubicación" onkeydown="if(event.key==='Enter') crearObra()"></div>
         <div class="form-field"><label>Cliente</label><input id="new_obra_cliente" type="text" placeholder="Nombre del cliente" onkeydown="if(event.key==='Enter') crearObra()"></div>
+        <div class="form-field"><label>Área (m²)</label><input id="new_obra_area" type="number" step="any" placeholder="Ej. 120" onkeydown="if(event.key==='Enter') crearObra()"></div>
         <div class="form-field"><label>Fecha de inicio</label><input id="new_obra_fechaInicio" type="date"></div>
         <div class="form-field"><label>Fecha estimada de término</label><input id="new_obra_fechaFin" type="date"></div>
         <div class="form-field" style="align-self:end;">
@@ -423,6 +436,7 @@ function renderListView(){
         <div class="form-field"><label>Nombre</label><input id="edit_obra_${obra.id}_nombre" type="text" value="${escapeHtml(obra.nombre)}"></div>
         <div class="form-field"><label>Lugar</label><input id="edit_obra_${obra.id}_lugar" type="text" value="${escapeHtml(obra.lugar)}"></div>
         <div class="form-field"><label>Cliente</label><input id="edit_obra_${obra.id}_cliente" type="text" value="${escapeHtml(obra.cliente)}"></div>
+        <div class="form-field"><label>Área (m²)</label><input id="edit_obra_${obra.id}_area" type="number" step="any" value="${escapeHtml(obra.areaM2)}"></div>
         <div class="form-field"><label>Fecha de inicio</label><input id="edit_obra_${obra.id}_fechaInicio" type="date" value="${escapeHtml(obra.fechaInicio)}"></div>
         <div class="form-field"><label>Fecha estimada de término</label><input id="edit_obra_${obra.id}_fechaFin" type="date" value="${escapeHtml(obra.fechaFinEstimada)}" ${obra.indefinido?'disabled':''}></div>
         <div class="form-field">
@@ -456,6 +470,8 @@ function renderListView(){
         <div class="meta">🗓️ ${fmtFecha(obra.fechaInicio)} – ${obra.indefinido ? 'Indefinido' : fmtFecha(obra.fechaFinEstimada)}</div>
         <div class="pv">${money(tot.pv)}</div>
         <div class="meta">Precio de venta total</div>
+        <div class="meta">Precio de venta / m²: ${moneyPorM2(tot.pv, obra.areaM2)}</div>
+        <div class="meta">Costo total / m²: ${moneyPorM2(tot.ct, obra.areaM2)}</div>
         <div class="acciones">
           <button class="btn-primary btn-sm" onclick="abrirObra('${obra.id}')">Abrir</button>
           <button class="btn-sm" onclick="iniciarEdicionObra('${obra.id}')">Editar</button>
@@ -494,6 +510,20 @@ function renderObraView(){
   if(state.pdfModalOpen) html += renderModalPDF();
 
   html += '<div class="container">';
+
+  // resumen general de la obra
+  html += `<div class="card" style="margin-top:16px;">
+    <h3>Resumen General de la Obra</h3>
+    <div class="resumen">
+      <div class="item"><div class="lbl">Área (m²)</div><div class="val">${obra.areaM2 ? num(obra.areaM2) : '—'}</div></div>
+      <div class="item total"><div class="lbl">Costo Directo Total</div><div class="val">${money(tot.cd)}</div></div>
+      <div class="item"><div class="lbl">Costo Indirecto Total</div><div class="val">${money(tot.ci)}</div></div>
+      <div class="item total"><div class="lbl">Costo Total</div><div class="val">${money(tot.ct)}</div></div>
+      <div class="item"><div class="lbl">Costo Total por m²</div><div class="val">${moneyPorM2(tot.ct, obra.areaM2)}</div></div>
+      <div class="item venta"><div class="lbl">Precio de Venta Total</div><div class="val">${money(tot.pv)}</div></div>
+      <div class="item"><div class="lbl">Precio de Venta por m²</div><div class="val">${moneyPorM2(tot.pv, obra.areaM2)}</div></div>
+    </div>
+  </div>`;
 
   // rama tabs
   html += '<div class="tabs">';
@@ -671,11 +701,16 @@ function exportarCSV(){
   });
 
   const tot = obraTotals(obra);
+  const pvM2 = valorPorM2(tot.pv, obra.areaM2);
+  const ctM2 = valorPorM2(tot.ct, obra.areaM2);
   rows.push(['RESUMEN OBRA']);
   rows.push(['Costo Directo Total','','','','', tot.cd.toFixed(2)]);
   rows.push(['Costo Indirecto Total','','','','', tot.ci.toFixed(2)]);
   rows.push(['Costo Total','','','','', tot.ct.toFixed(2)]);
   rows.push(['Precio de Venta Total','','','','', tot.pv.toFixed(2)]);
+  rows.push(['Área (m²)','','','','', obra.areaM2 || '']);
+  rows.push(['Precio de Venta por m²','','','','', pvM2 !== null ? pvM2.toFixed(2) : 'N/A']);
+  rows.push(['Costo Total por m²','','','','', ctM2 !== null ? ctM2.toFixed(2) : 'N/A']);
 
   const csv = rows.map(r=> r.map(csvEscape).join(',')).join('\n');
   const filename = (obra.nombre || 'obra').replace(/[^a-z0-9]+/gi,'_') + '_APU.csv';
@@ -726,7 +761,8 @@ function buildPrintHTML(obra, ramaKeys){
 
   html += `<h2>Resumen General de la Obra</h2>
     <p class="grand">Costo Directo Total: ${money(tot.cd)} &nbsp;|&nbsp; Costo Indirecto Total: ${money(tot.ci)} &nbsp;|&nbsp; Costo Total: ${money(tot.ct)}</p>
-    <p class="grand">PRECIO DE VENTA TOTAL: ${money(tot.pv)}</p>`;
+    <p class="grand">PRECIO DE VENTA TOTAL: ${money(tot.pv)}</p>
+    <p class="grand">Área: ${obra.areaM2 ? num(obra.areaM2)+' m²' : '—'} &nbsp;|&nbsp; Precio de Venta por m²: ${moneyPorM2(tot.pv, obra.areaM2)} &nbsp;|&nbsp; Costo Total por m²: ${moneyPorM2(tot.ct, obra.areaM2)}</p>`;
 
   return html;
 }
